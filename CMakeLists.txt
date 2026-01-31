@@ -21,7 +21,10 @@ find_package(SDL3 REQUIRED)
 find_package(Vulkan REQUIRED)
 
 
-set(SOURCES src/main.cpp)
+set(SOURCES
+  src/main.cpp
+  src/base/base.cpp
+)
 
 add_executable(${TARGET} ${SOURCES})
 

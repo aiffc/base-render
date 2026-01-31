@@ -1,0 +1,8 @@
+[
+{
+  "directory": "/mnt/e/code/base-render/build",
+  "command": "/usr/bin/c++   -std=gnu++20 -Wall -Wextra -Wpedantic -o CMakeFiles/vbr.dir/src/main.cpp.o -c /mnt/e/code/base-render/src/main.cpp",
+  "file": "/mnt/e/code/base-render/src/main.cpp",
+  "output": "CMakeFiles/vbr.dir/src/main.cpp.o"
+}
+]
