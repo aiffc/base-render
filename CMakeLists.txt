@@ -19,6 +19,8 @@ set(TARGET ${PROJECT_NAME})
 
 find_package(SDL3 REQUIRED)
 find_package(Vulkan REQUIRED)
+find_package(glm REQUIRED)
+find_package(spdlog REQUIRED)
 
 
 set(SOURCES
@@ -30,4 +32,7 @@ add_executable(${TARGET} ${SOURCES})
 
 target_link_libraries(${TARGET}
   ${SDL3_LIBRARIES}
-  ${Vulkan_LIBRARIES})
+  ${Vulkan_LIBRARIES}
+  glm::glm
+  spdlog::spdlog
+)
