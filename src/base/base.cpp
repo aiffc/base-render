@@ -1,5 +1,4 @@
 #include "base.hpp"
-#include "iostream"
 #include "spdlog/spdlog.h"
 #include "vulkan/vulkan_core.h"
 #include <SDL3/SDL_error.h>
@@ -10,6 +9,7 @@
 #include <algorithm>
 #include <cstring>
 #include <memory>
+#include <spdlog/common.h>
 #include <vector>
 
 const std::vector<char const *> validation_layers = {
@@ -17,19 +17,7 @@ const std::vector<char const *> validation_layers = {
 };
 
 App::App(const glm::ivec2 &window_size) : m_window_size(window_size) {}
-App::~App() {
-    if (m_debug && m_vk_dbg_messager) {
-        auto fun = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
-            m_vk_instance, "vkDestroyDebugUtilsMessengerEXT");
-        if (fun) {
-            fun(m_vk_instance, m_vk_dbg_messager, nullptr);
-        }
-    }
-
-    if (m_vk_instance) {
-        vkDestroyInstance(m_vk_instance, nullptr);
-    }
-}
+App::~App() = default;
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL
 debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -186,9 +174,111 @@ bool App::initInstance() {
     return true;
 }
 
+bool App::initSurface() {
+    return SDL_Vulkan_CreateSurface(m_window.get(), m_vk_instance, nullptr,
+                                    &m_vk_surface);
+}
+
+bool App::pickupPhyDevice() {
+    uint32_t count = 0;
+    if (VK_SUCCESS !=
+        vkEnumeratePhysicalDevices(m_vk_instance, &count, nullptr)) {
+        spdlog::error("failed to pickup physical device");
+        return false;
+    }
+    std::vector<VkPhysicalDevice> physical_devices{count};
+    if (VK_SUCCESS != vkEnumeratePhysicalDevices(m_vk_instance, &count,
+                                                 physical_devices.data())) {
+        spdlog::error("failed to pickup physical device");
+        return false;
+    }
+
+    bool found = false;
+    for (const auto &phy : physical_devices) {
+        VkPhysicalDeviceProperties properties;
+        VkPhysicalDeviceFeatures features;
+        vkGetPhysicalDeviceProperties(phy, &properties);
+        vkGetPhysicalDeviceFeatures(phy, &features);
+
+        spdlog::info("device name {}", properties.deviceName);
+
+        if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
+            features.geometryShader) {
+            m_vk_phy_device = phy;
+            found = true;
+
+            m_vk_phy_info.features = features;
+            m_vk_phy_info.properties = properties;
+            vkGetPhysicalDeviceMemoryProperties(
+                m_vk_phy_device, &m_vk_phy_info.memory_properties);
+            uint32_t pcount = 0;
+            vkGetPhysicalDeviceQueueFamilyProperties(m_vk_phy_device, &pcount,
+                                                     nullptr);
+            m_vk_phy_info.queue_family_properties.resize(pcount);
+            vkGetPhysicalDeviceQueueFamilyProperties(
+                m_vk_phy_device, &pcount,
+                m_vk_phy_info.queue_family_properties.data());
+            break;
+        }
+    }
+
+    // select the bad one
+    if (!found && count != 0) {
+        spdlog::warn("no sutiable device, select the bad one");
+        m_vk_phy_device = physical_devices[0];
+        found = true;
+        vkGetPhysicalDeviceProperties(m_vk_phy_device,
+                                      &m_vk_phy_info.properties);
+        vkGetPhysicalDeviceFeatures(m_vk_phy_device, &m_vk_phy_info.features);
+        vkGetPhysicalDeviceMemoryProperties(m_vk_phy_device,
+                                            &m_vk_phy_info.memory_properties);
+        uint32_t pcount = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(m_vk_phy_device, &pcount,
+                                                 nullptr);
+        m_vk_phy_info.queue_family_properties.resize(pcount);
+        vkGetPhysicalDeviceQueueFamilyProperties(
+            m_vk_phy_device, &pcount,
+            m_vk_phy_info.queue_family_properties.data());
+    }
+
+    if (found) {
+        m_vk_queue_indices.graphics = std::nullopt;
+        m_vk_queue_indices.transfer = std::nullopt;
+        m_vk_queue_indices.present = std::nullopt;
+        m_vk_queue_indices.compute = std::nullopt;
+        uint32_t i = 0;
+        for (const auto &family : m_vk_phy_info.queue_family_properties) {
+            if ((family.queueFlags & VK_QUEUE_GRAPHICS_BIT) &&
+                (!m_vk_queue_indices.graphics.has_value())) {
+                spdlog::info("graphics queue index {}", i);
+                m_vk_queue_indices.graphics = i;
+            }
+            if ((family.queueFlags & VK_QUEUE_COMPUTE_BIT) &&
+                (!m_vk_queue_indices.compute.has_value())) {
+                spdlog::info("compute queue index {}", i);
+                m_vk_queue_indices.compute = i;
+            }
+            if ((family.queueFlags & VK_QUEUE_TRANSFER_BIT) &&
+                (!m_vk_queue_indices.transfer.has_value())) {
+                spdlog::info("transfer queue index {}", i);
+                m_vk_queue_indices.transfer = i;
+            }
+            VkBool32 present_support = false;
+            vkGetPhysicalDeviceSurfaceSupportKHR(
+                m_vk_phy_device, i, m_vk_surface, &present_support);
+            if (present_support == VK_TRUE) {
+                spdlog::info("present index {}", i);
+                m_vk_queue_indices.present = i;
+            }
+            i++;
+        }
+    }
+    return found;
+}
+
 bool App::init(SDL_InitFlags flags) {
     if (m_debug) {
-        spdlog::set_level(spdlog::level::err);
+        spdlog::set_level(spdlog::level::info);
     }
     if (!SDL_Init(flags)) {
         spdlog::error("sdl init failed", SDL_GetError());
@@ -208,6 +298,14 @@ bool App::init(SDL_InitFlags flags) {
     if (!initInstance()) {
         return false;
     }
+    if (!initSurface()) {
+        spdlog::error("sdl init vulkan surface failed {}", SDL_GetError());
+        return false;
+    }
+    if (!pickupPhyDevice()) {
+        spdlog::error("unable to found sutiable physical device");
+        return false;
+    }
     return true;
 }
 
@@ -224,5 +322,19 @@ void App::event(SDL_Event *event) {
 void App::render() {}
 
 void App::quit() {
-    // vulkan quit
+    if (m_vk_surface) {
+        vkDestroySurfaceKHR(m_vk_instance, m_vk_surface, nullptr);
+    }
+
+    if (m_debug && m_vk_dbg_messager) {
+        auto fun = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
+            m_vk_instance, "vkDestroyDebugUtilsMessengerEXT");
+        if (fun) {
+            fun(m_vk_instance, m_vk_dbg_messager, nullptr);
+        }
+    }
+
+    if (m_vk_instance) {
+        vkDestroyInstance(m_vk_instance, nullptr);
+    }
 }

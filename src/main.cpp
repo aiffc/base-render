@@ -36,4 +36,5 @@ SDL_AppResult SDL_AppIterate(void *appstate [[maybe_unused]]) {
 void SDL_AppQuit(void *appstate [[maybe_unused]],
                  SDL_AppResult result [[maybe_unused]]) {
     app->quit();
+    app.reset();
 }
