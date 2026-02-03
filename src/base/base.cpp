@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstring>
 #include <memory>
+#include <set>
 #include <spdlog/common.h>
 #include <vector>
 
@@ -55,6 +56,10 @@ bool App::initInstance() {
         spdlog::error("failed to enumerate instance layer");
         return false;
     }
+    // dump all supported layer
+    for (auto &support_layer : support_layers) {
+        spdlog::info("{}", support_layer.layerName);
+    }
     std::vector<char const *> required_layers;
     if (m_debug) {
         required_layers.assign(validation_layers.begin(),
@@ -98,11 +103,11 @@ bool App::initInstance() {
         spdlog::error("failed to enumerate instance extensions");
         return false;
     }
-    // check all required extension support
+    // dump all supported extension
     for (auto &support_extension : support_extensions) {
-        spdlog::debug("{}", support_extension.extensionName);
+        spdlog::info("{}", support_extension.extensionName);
     }
-
+    // check all required extension support
     for (const auto &extension : required_extensions) {
         if (std::ranges::none_of(
                 support_extensions, [extension](const auto &support_extension) {
@@ -276,6 +281,135 @@ bool App::pickupPhyDevice() {
     return found;
 }
 
+bool App::initLogicDevice() {
+    std::vector<VkDeviceQueueCreateInfo> queue_infos;
+    std::set<uint32_t> queue_index;
+    if (m_vk_queue_indices.graphics.has_value()) {
+        queue_index.insert(m_vk_queue_indices.graphics.value());
+    }
+    if (m_vk_queue_indices.transfer.has_value()) {
+        queue_index.insert(m_vk_queue_indices.transfer.value());
+    }
+    if (m_vk_queue_indices.present.has_value()) {
+        queue_index.insert(m_vk_queue_indices.present.value());
+    }
+    if (m_vk_queue_indices.compute.has_value()) {
+        queue_index.insert(m_vk_queue_indices.compute.value());
+    }
+    float p = 1.0f;
+
+    for (const auto &index : queue_index) {
+        VkDeviceQueueCreateInfo queue_info{
+            .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .queueFamilyIndex = index,
+            .queueCount = 1,
+            .pQueuePriorities = &p,
+        };
+
+        queue_infos.push_back(queue_info);
+    }
+
+    uint32_t support_layer_count = 0;
+    std::vector<VkLayerProperties> support_layeries;
+    if (VK_SUCCESS == vkEnumerateDeviceLayerProperties(
+                          m_vk_phy_device, &support_layer_count, nullptr)) {
+        support_layeries.resize(support_layer_count);
+        if (VK_SUCCESS != vkEnumerateDeviceLayerProperties(
+                              m_vk_phy_device, &support_layer_count,
+                              support_layeries.data())) {
+            spdlog::error("failed enumerate device layer");
+            return false;
+        }
+    } else {
+        spdlog::error("failed enumerate device layer count");
+        return false;
+    }
+
+    // dump all supported layer
+    for (const auto &support_layer : support_layeries) {
+        spdlog::info("{}", support_layer.layerName);
+    }
+
+    uint32_t support_extension_count = 0;
+    std::vector<VkExtensionProperties> support_extensions;
+
+    if (VK_SUCCESS ==
+        vkEnumerateDeviceExtensionProperties(
+            m_vk_phy_device, nullptr, &support_extension_count, nullptr)) {
+        support_extensions.resize(support_extension_count);
+        if (VK_SUCCESS !=
+            vkEnumerateDeviceExtensionProperties(m_vk_phy_device, nullptr,
+                                                 &support_extension_count,
+                                                 support_extensions.data())) {
+            spdlog::error("failed enumerate device extension");
+            return false;
+        }
+    } else {
+        spdlog::error("failed enumerate device extension");
+        return false;
+    }
+
+    // dump all supported extension
+    for (const auto &support_extension : support_extensions) {
+        spdlog::info("{}", support_extension.extensionName);
+    }
+
+    std::vector<const char *> required_layers;
+    if (m_debug) {
+        required_layers.assign(validation_layers.begin(),
+                               validation_layers.end());
+    }
+
+    std::vector<const char *> required_extensions = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    };
+
+    for (const auto &required_layer : required_layers) {
+        if (std::ranges::none_of(
+                support_layeries, [required_layer](const auto &support_layer) {
+                    return !strcmp(required_layer, support_layer.layerName);
+                })) {
+            spdlog::error("device layer {} not supported", required_layer);
+            return false;
+        }
+    }
+
+    for (const auto &required_extension : required_extensions) {
+        if (std::ranges::none_of(
+                support_extensions,
+                [required_extension](const auto &support_extension) {
+                    return !strcmp(required_extension,
+                                   support_extension.extensionName);
+                })) {
+            spdlog::error("device extension {} not supported",
+                          required_extension);
+            return false;
+        }
+    }
+
+    VkDeviceCreateInfo info{
+        .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .queueCreateInfoCount = static_cast<uint32_t>(queue_infos.size()),
+        .pQueueCreateInfos = queue_infos.data(),
+        .enabledLayerCount = static_cast<uint32_t>(required_layers.size()),
+        .ppEnabledLayerNames = required_layers.data(),
+        .enabledExtensionCount =
+            static_cast<uint32_t>(required_extensions.size()),
+        .ppEnabledExtensionNames = required_extensions.data(),
+        .pEnabledFeatures = nullptr,
+    };
+
+    if (VK_SUCCESS !=
+        vkCreateDevice(m_vk_phy_device, &info, nullptr, &m_vk_device)) {
+        return false;
+    }
+    return true;
+}
+
 bool App::init(SDL_InitFlags flags) {
     if (m_debug) {
         spdlog::set_level(spdlog::level::info);
@@ -306,6 +440,9 @@ bool App::init(SDL_InitFlags flags) {
         spdlog::error("unable to found sutiable physical device");
         return false;
     }
+    if (!initLogicDevice()) {
+        return false;
+    }
     return true;
 }
 
@@ -322,6 +459,10 @@ void App::event(SDL_Event *event) {
 void App::render() {}
 
 void App::quit() {
+    if (m_vk_device) {
+        vkDestroyDevice(m_vk_device, nullptr);
+    }
+
     if (m_vk_surface) {
         vkDestroySurfaceKHR(m_vk_instance, m_vk_surface, nullptr);
     }

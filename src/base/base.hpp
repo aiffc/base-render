@@ -48,12 +48,14 @@ class App {
     VkPhysicalDevice m_vk_phy_device;
     GPUInfo m_vk_phy_info;
     QueueFamilyIndices m_vk_queue_indices;
+    VkDevice m_vk_device;
 
   private:
     // internal function for vulkan init
     bool initInstance();
     bool initSurface();
     bool pickupPhyDevice();
+    bool initLogicDevice();
 
   public:
     App(const glm::ivec2 &window_size = {1024, 980});
