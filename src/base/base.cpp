@@ -244,6 +244,67 @@ bool App::pickupPhyDevice() {
         vkGetPhysicalDeviceQueueFamilyProperties(
             m_vk_phy_device, &pcount,
             m_vk_phy_info.queue_family_properties.data());
+        // select present mode
+        count = 0;
+        if (VK_SUCCESS == vkGetPhysicalDeviceSurfacePresentModesKHR(
+                              m_vk_phy_device, m_vk_surface, &count, nullptr)) {
+            std::vector<VkPresentModeKHR> support_present_modes{count};
+            if (VK_SUCCESS == vkGetPhysicalDeviceSurfacePresentModesKHR(
+                                  m_vk_phy_device, m_vk_surface, &count,
+                                  support_present_modes.data())) {
+                if (std::ranges::any_of(
+                        support_present_modes, [](const auto &present_mode) {
+                            return present_mode == VK_PRESENT_MODE_MAILBOX_KHR;
+                        })) {
+                    spdlog::info(
+                        "select present mode VK_PRESENT_MODE_MAILBOX_KHR");
+                    m_vk_phy_info.present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
+                } else {
+                    spdlog::info("select present mode default");
+                    m_vk_phy_info.present_mode = support_present_modes[0];
+                }
+            } else {
+                spdlog::error("failed to get physical device present mode");
+                return false;
+            }
+        } else {
+            spdlog::error("failed to get physical device present mode");
+            return false;
+        }
+        // get surface capabilities
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_vk_phy_device, m_vk_surface,
+                                                  &m_vk_phy_info.capabilities);
+        // get formats info
+        count = 0;
+        if (VK_SUCCESS == vkGetPhysicalDeviceSurfaceFormatsKHR(
+                              m_vk_phy_device, m_vk_surface, &count, nullptr)) {
+            std::vector<VkSurfaceFormatKHR> surface_formats{count};
+            surface_formats.resize(count);
+            if (VK_SUCCESS == vkGetPhysicalDeviceSurfaceFormatsKHR(
+                                  m_vk_phy_device, m_vk_surface, &count,
+                                  surface_formats.data())) {
+                if (std::ranges::any_of(
+                        surface_formats, [](const auto &surface_format) {
+                            return surface_format.colorSpace ==
+                                       VK_COLOR_SPACE_SRGB_NONLINEAR_KHR &&
+                                   surface_format.format ==
+                                       VK_FORMAT_B8G8R8A8_SRGB;
+                        })) {
+                    m_vk_phy_info.surface_format.format =
+                        VK_FORMAT_B8G8R8A8_SRGB;
+                    m_vk_phy_info.surface_format.colorSpace =
+                        VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+                } else {
+                    m_vk_phy_info.surface_format = surface_formats[0];
+                }
+            } else {
+                spdlog::error("failed to get physical device surface formats");
+                return false;
+            }
+        } else {
+            spdlog::error("failed to get physical device surface formats");
+            return false;
+        }
     }
 
     if (found) {
@@ -277,6 +338,10 @@ bool App::pickupPhyDevice() {
             }
             i++;
         }
+        if (!m_vk_queue_indices.graphics.has_value() ||
+            !m_vk_queue_indices.present.has_value()) {
+            return false;
+        }
     }
     return found;
 }
@@ -297,7 +362,6 @@ bool App::initLogicDevice() {
         queue_index.insert(m_vk_queue_indices.compute.value());
     }
     float p = 1.0f;
-
     for (const auto &index : queue_index) {
         VkDeviceQueueCreateInfo queue_info{
             .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
@@ -364,6 +428,7 @@ bool App::initLogicDevice() {
 
     std::vector<const char *> required_extensions = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+        VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
     };
 
     for (const auto &required_layer : required_layers) {
@@ -389,9 +454,17 @@ bool App::initLogicDevice() {
         }
     }
 
+    VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamic_render_feature{
+        .sType =
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
+        .pNext = nullptr,
+        .dynamicRendering = VK_TRUE,
+    };
+
     VkDeviceCreateInfo info{
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext = nullptr,
+        .pNext = (VkPhysicalDeviceDynamicRenderingFeaturesKHR
+                      *)&dynamic_render_feature,
         .flags = 0,
         .queueCreateInfoCount = static_cast<uint32_t>(queue_infos.size()),
         .pQueueCreateInfos = queue_infos.data(),
@@ -400,13 +473,86 @@ bool App::initLogicDevice() {
         .enabledExtensionCount =
             static_cast<uint32_t>(required_extensions.size()),
         .ppEnabledExtensionNames = required_extensions.data(),
-        .pEnabledFeatures = nullptr,
+        .pEnabledFeatures = &m_vk_phy_info.features,
     };
 
     if (VK_SUCCESS !=
         vkCreateDevice(m_vk_phy_device, &info, nullptr, &m_vk_device)) {
         return false;
     }
+    if (m_vk_queue_indices.graphics.has_value()) {
+        vkGetDeviceQueue(m_vk_device, m_vk_queue_indices.graphics.value(), 0,
+                         &m_vk_queues.graphics);
+    }
+    if (m_vk_queue_indices.present.has_value()) {
+        vkGetDeviceQueue(m_vk_device, m_vk_queue_indices.present.value(), 0,
+                         &m_vk_queues.present);
+    }
+
+    if (m_vk_queue_indices.transfer.has_value()) {
+        vkGetDeviceQueue(m_vk_device, m_vk_queue_indices.transfer.value(), 0,
+                         &m_vk_queues.transfer);
+    }
+
+    if (m_vk_queue_indices.compute.has_value()) {
+        vkGetDeviceQueue(m_vk_device, m_vk_queue_indices.compute.value(), 0,
+                         &m_vk_queues.compute);
+    }
+
+    return true;
+}
+
+bool App::initSwapchain() {
+
+    uint32_t image_count = m_vk_phy_info.capabilities.minImageCount + 1;
+    if (image_count > m_vk_phy_info.capabilities.maxImageCount &&
+        m_vk_phy_info.capabilities.maxImageCount > 0) {
+        image_count = m_vk_phy_info.capabilities.maxImageCount;
+    }
+    int w, h;
+    SDL_GetWindowSize(m_window.get(), &w, &h);
+    VkExtent2D extent{
+        .width = static_cast<uint32_t>(w),
+        .height = static_cast<uint32_t>(h),
+    };
+
+    uint32_t graphics_queue_indices = m_vk_queue_indices.graphics.value();
+    uint32_t present_queue_indices = m_vk_queue_indices.present.value();
+    std::vector<uint32_t> indices;
+    VkSharingMode sharing_mode = VK_SHARING_MODE_EXCLUSIVE;
+    if (graphics_queue_indices != present_queue_indices) {
+        indices.push_back(graphics_queue_indices);
+        indices.push_back(present_queue_indices);
+        sharing_mode = VK_SHARING_MODE_CONCURRENT;
+    }
+
+    VkSwapchainCreateInfoKHR info{
+        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .pNext = nullptr,
+        .flags = 0,
+        .surface = m_vk_surface,
+        .minImageCount = image_count,
+        .imageFormat = m_vk_phy_info.surface_format.format,
+        .imageColorSpace = m_vk_phy_info.surface_format.colorSpace,
+        .imageExtent = extent,
+        .imageArrayLayers = 1,
+        .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .imageSharingMode = sharing_mode,
+        .queueFamilyIndexCount = static_cast<uint32_t>(indices.size()),
+        .pQueueFamilyIndices = indices.data(),
+        .preTransform = m_vk_phy_info.capabilities.currentTransform,
+        .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        .presentMode = m_vk_phy_info.present_mode,
+        .clipped = VK_TRUE,
+        .oldSwapchain = nullptr,
+    };
+
+    if (VK_SUCCESS !=
+        vkCreateSwapchainKHR(m_vk_device, &info, nullptr, &m_vk_swapchain)) {
+        spdlog::error("failed to create swaochain khr");
+        return false;
+    }
+
     return true;
 }
 
@@ -443,6 +589,9 @@ bool App::init(SDL_InitFlags flags) {
     if (!initLogicDevice()) {
         return false;
     }
+    if (!initSwapchain()) {
+        return false;
+    }
     return true;
 }
 
@@ -459,6 +608,10 @@ void App::event(SDL_Event *event) {
 void App::render() {}
 
 void App::quit() {
+    if (m_vk_swapchain) {
+        vkDestroySwapchainKHR(m_vk_device, m_vk_swapchain, nullptr);
+    }
+
     if (m_vk_device) {
         vkDestroyDevice(m_vk_device, nullptr);
     }

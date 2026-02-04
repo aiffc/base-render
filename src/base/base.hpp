@@ -17,6 +17,9 @@ struct GPUInfo {
     VkPhysicalDeviceMemoryProperties memory_properties;
     VkPhysicalDeviceProperties properties;
     std::vector<VkQueueFamilyProperties> queue_family_properties;
+    VkPresentModeKHR present_mode;
+    VkSurfaceCapabilitiesKHR capabilities;
+    VkSurfaceFormatKHR surface_format;
 };
 
 struct QueueFamilyIndices {
@@ -24,6 +27,13 @@ struct QueueFamilyIndices {
     std::optional<uint32_t> transfer;
     std::optional<uint32_t> present;
     std::optional<uint32_t> compute;
+};
+
+struct Queues {
+    VkQueue graphics;
+    VkQueue present;
+    VkQueue transfer;
+    VkQueue compute;
 };
 
 class App {
@@ -49,6 +59,8 @@ class App {
     GPUInfo m_vk_phy_info;
     QueueFamilyIndices m_vk_queue_indices;
     VkDevice m_vk_device;
+    Queues m_vk_queues;
+    VkSwapchainKHR m_vk_swapchain;
 
   private:
     // internal function for vulkan init
@@ -56,6 +68,7 @@ class App {
     bool initSurface();
     bool pickupPhyDevice();
     bool initLogicDevice();
+    bool initSwapchain();
 
   public:
     App(const glm::ivec2 &window_size = {1024, 980});
