@@ -211,18 +211,6 @@ bool App::pickupPhyDevice() {
             features.geometryShader) {
             m_vk_phy_device = phy;
             found = true;
-
-            m_vk_phy_info.features = features;
-            m_vk_phy_info.properties = properties;
-            vkGetPhysicalDeviceMemoryProperties(
-                m_vk_phy_device, &m_vk_phy_info.memory_properties);
-            uint32_t pcount = 0;
-            vkGetPhysicalDeviceQueueFamilyProperties(m_vk_phy_device, &pcount,
-                                                     nullptr);
-            m_vk_phy_info.queue_family_properties.resize(pcount);
-            vkGetPhysicalDeviceQueueFamilyProperties(
-                m_vk_phy_device, &pcount,
-                m_vk_phy_info.queue_family_properties.data());
             break;
         }
     }
@@ -232,6 +220,9 @@ bool App::pickupPhyDevice() {
         spdlog::warn("no sutiable device, select the bad one");
         m_vk_phy_device = physical_devices[0];
         found = true;
+    }
+
+    if (found) {
         vkGetPhysicalDeviceProperties(m_vk_phy_device,
                                       &m_vk_phy_info.properties);
         vkGetPhysicalDeviceFeatures(m_vk_phy_device, &m_vk_phy_info.features);
@@ -305,9 +296,7 @@ bool App::pickupPhyDevice() {
             spdlog::error("failed to get physical device surface formats");
             return false;
         }
-    }
 
-    if (found) {
         m_vk_queue_indices.graphics = std::nullopt;
         m_vk_queue_indices.transfer = std::nullopt;
         m_vk_queue_indices.present = std::nullopt;
