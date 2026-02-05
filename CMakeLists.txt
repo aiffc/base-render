@@ -25,6 +25,8 @@ find_package(spdlog REQUIRED)
 
 set(SOURCES
   src/main.cpp
+  src/base/image.cpp
+  src/base/util.cpp
   src/base/base.cpp
 )
 

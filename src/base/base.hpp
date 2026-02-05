@@ -2,6 +2,7 @@
 
 #include "SDL3/SDL.h"
 #include "glm/glm.hpp"
+#include "image.hpp"
 #include "vulkan/vulkan.h"
 #include "vulkan/vulkan_core.h"
 #include <SDL3/SDL_init.h>
@@ -10,6 +11,7 @@
 #include <optional>
 #include <vector>
 
+namespace vbr::app {
 struct GPUInfo {
     VkPhysicalDeviceFeatures features;
     // format properties
@@ -61,6 +63,7 @@ class App {
     VkDevice m_vk_device;
     Queues m_vk_queues;
     VkSwapchainKHR m_vk_swapchain;
+    std::vector<std::unique_ptr<vbr::image::Image>> m_vk_swapchain_images;
 
   private:
     // internal function for vulkan init
@@ -87,3 +90,5 @@ class App {
     App &operator=(App &) = delete;
     App &operator=(App &&) = delete;
 };
+
+} // namespace vbr::app

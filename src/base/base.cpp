@@ -1,4 +1,5 @@
 #include "base.hpp"
+#include "image.hpp"
 #include "spdlog/spdlog.h"
 #include "vulkan/vulkan_core.h"
 #include <SDL3/SDL_error.h>
@@ -13,12 +14,14 @@
 #include <spdlog/common.h>
 #include <vector>
 
+namespace vbr::app {
+
 const std::vector<char const *> validation_layers = {
     "VK_LAYER_KHRONOS_validation",
 };
 
 App::App(const glm::ivec2 &window_size) : m_window_size(window_size) {}
-App::~App() = default;
+App::~App() { quit(); }
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL
 debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -469,6 +472,7 @@ bool App::initLogicDevice() {
         vkCreateDevice(m_vk_phy_device, &info, nullptr, &m_vk_device)) {
         return false;
     }
+
     if (m_vk_queue_indices.graphics.has_value()) {
         vkGetDeviceQueue(m_vk_device, m_vk_queue_indices.graphics.value(), 0,
                          &m_vk_queues.graphics);
@@ -492,7 +496,6 @@ bool App::initLogicDevice() {
 }
 
 bool App::initSwapchain() {
-
     uint32_t image_count = m_vk_phy_info.capabilities.minImageCount + 1;
     if (image_count > m_vk_phy_info.capabilities.maxImageCount &&
         m_vk_phy_info.capabilities.maxImageCount > 0) {
@@ -539,6 +542,29 @@ bool App::initSwapchain() {
     if (VK_SUCCESS !=
         vkCreateSwapchainKHR(m_vk_device, &info, nullptr, &m_vk_swapchain)) {
         spdlog::error("failed to create swaochain khr");
+        return false;
+    }
+
+    uint32_t count = 0;
+    if (VK_SUCCESS ==
+        vkGetSwapchainImagesKHR(m_vk_device, m_vk_swapchain, &count, nullptr)) {
+        std::vector<VkImage> swapchain_images{count};
+        if (VK_SUCCESS == vkGetSwapchainImagesKHR(m_vk_device, m_vk_swapchain,
+                                                  &count,
+                                                  swapchain_images.data())) {
+
+            for (size_t i = 0; i < count; ++i) {
+                auto siv = std::make_unique<vbr::image::Image>(
+                    m_vk_device, swapchain_images[i], true);
+                siv->init(m_vk_phy_info.surface_format.format);
+                m_vk_swapchain_images.push_back(std::move(siv));
+            }
+        } else {
+            spdlog::error("failed to get swapchain images");
+            return false;
+        }
+    } else {
+        spdlog::error("failed to get swapchain images");
         return false;
     }
 
@@ -597,27 +623,38 @@ void App::event(SDL_Event *event) {
 void App::render() {}
 
 void App::quit() {
-    if (m_vk_swapchain) {
+    if (!m_vk_swapchain_images.empty()) {
+        m_vk_swapchain_images.clear();
+    }
+
+    if (m_vk_swapchain != VK_NULL_HANDLE) {
         vkDestroySwapchainKHR(m_vk_device, m_vk_swapchain, nullptr);
+        m_vk_swapchain = VK_NULL_HANDLE;
     }
 
-    if (m_vk_device) {
+    if (m_vk_device != VK_NULL_HANDLE) {
         vkDestroyDevice(m_vk_device, nullptr);
+        m_vk_device = VK_NULL_HANDLE;
     }
 
-    if (m_vk_surface) {
+    if (m_vk_surface != VK_NULL_HANDLE) {
         vkDestroySurfaceKHR(m_vk_instance, m_vk_surface, nullptr);
+        m_vk_surface = VK_NULL_HANDLE;
     }
 
-    if (m_debug && m_vk_dbg_messager) {
+    if (m_debug && m_vk_dbg_messager != VK_NULL_HANDLE) {
         auto fun = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
             m_vk_instance, "vkDestroyDebugUtilsMessengerEXT");
         if (fun) {
             fun(m_vk_instance, m_vk_dbg_messager, nullptr);
         }
+        m_vk_dbg_messager = VK_NULL_HANDLE;
     }
 
-    if (m_vk_instance) {
+    if (m_vk_instance != VK_NULL_HANDLE) {
         vkDestroyInstance(m_vk_instance, nullptr);
+        m_vk_instance = VK_NULL_HANDLE;
     }
 }
+
+} // namespace vbr::app
