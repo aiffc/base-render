@@ -64,14 +64,22 @@ class App {
     Queues m_vk_queues;
     VkSwapchainKHR m_vk_swapchain;
     std::vector<std::unique_ptr<vbr::image::Image>> m_vk_swapchain_images;
+    VkCommandPool m_vk_cmd_pool;
+    // TODO for now just support one command buffer
+    std::vector<VkCommandBuffer> m_vk_cmds;
 
   private:
     // internal function for vulkan init
-    bool initInstance();
-    bool initSurface();
-    bool pickupPhyDevice();
-    bool initLogicDevice();
-    bool initSwapchain();
+    [[nodiscard]] bool initInstance();
+    [[nodiscard]] bool initSurface();
+    [[nodiscard]] bool pickupPhyDevice();
+    [[nodiscard]] bool initLogicDevice();
+    [[nodiscard]] bool initSwapchain();
+    [[nodiscard]] bool initCmds(uint32_t cmd_count = 1);
+
+  protected:
+    bool begin();
+    bool end();
 
   public:
     App(const glm::ivec2 &window_size = {1024, 980});

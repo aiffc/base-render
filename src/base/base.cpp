@@ -5,9 +5,11 @@
 #include <SDL3/SDL_error.h>
 #include <SDL3/SDL_events.h>
 #include <SDL3/SDL_init.h>
+#include <SDL3/SDL_oldnames.h>
 #include <SDL3/SDL_video.h>
 #include <SDL3/SDL_vulkan.h>
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <set>
@@ -571,6 +573,37 @@ bool App::initSwapchain() {
     return true;
 }
 
+bool App::initCmds(uint32_t cmd_count) {
+    VkCommandPoolCreateInfo info{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        .queueFamilyIndex = m_vk_queue_indices.graphics.value(),
+    };
+    if (VK_SUCCESS !=
+        vkCreateCommandPool(m_vk_device, &info, nullptr, &m_vk_cmd_pool)) {
+        spdlog::error("failed to create command pool");
+        return false;
+    }
+
+    m_vk_cmds.resize(cmd_count);
+    VkCommandBufferAllocateInfo alloc_info{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .pNext = nullptr,
+        .commandPool = m_vk_cmd_pool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = cmd_count,
+    };
+
+    if (VK_SUCCESS !=
+        vkAllocateCommandBuffers(m_vk_device, &alloc_info, m_vk_cmds.data())) {
+        spdlog::error("failed to alloc commands");
+        return false;
+    }
+
+    return true;
+}
+
 bool App::init(SDL_InitFlags flags) {
     if (m_debug) {
         spdlog::set_level(spdlog::level::info);
@@ -607,6 +640,70 @@ bool App::init(SDL_InitFlags flags) {
     if (!initSwapchain()) {
         return false;
     }
+    if (!initCmds()) {
+        return false;
+    }
+    return true;
+}
+
+bool App::begin() {
+    static uint32_t index = 0;
+    VkCommandBufferBeginInfo info{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .pInheritanceInfo = nullptr,
+    };
+    if (VK_SUCCESS != vkBeginCommandBuffer(m_vk_cmds[0], &info)) {
+        return false;
+    }
+    VkRenderingAttachmentInfo attachment_info{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
+        .pNext = nullptr,
+        .imageView = m_vk_swapchain_images[index]->view,
+        .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .resolveMode = VK_RESOLVE_MODE_NONE,
+        .resolveImageView = nullptr,
+        .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+        .clearValue = {.color = {.float32 = {1.0f, 1.0f, 0.0f, 1.0f}}},
+    };
+
+    VkRenderingInfo rinfo{
+        .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .renderArea = {.offset =
+                           {
+                               .x = 0,
+                               .y = 0,
+                           },
+                       .extent =
+                           {
+                               .width = static_cast<uint32_t>(m_window_size.x),
+                               .height = static_cast<uint32_t>(m_window_size.y),
+                           }
+
+        },
+        .layerCount = 1,
+        .viewMask = 0,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &attachment_info,
+        .pDepthAttachment = nullptr,
+        .pStencilAttachment = nullptr,
+    };
+    vkCmdBeginRendering(m_vk_cmds[0], &rinfo);
+    index++;
+    index = index % m_vk_swapchain_images.size();
+    return true;
+}
+
+bool App::end() {
+    vkCmdEndRendering(m_vk_cmds[0]);
+    if (VK_SUCCESS != vkEndCommandBuffer(m_vk_cmds[0])) {
+        return false;
+    }
     return true;
 }
 
@@ -620,9 +717,23 @@ void App::event(SDL_Event *event) {
     }
 }
 
-void App::render() {}
+void App::render() {
+    if (begin()) {
+        end();
+    }
+}
 
 void App::quit() {
+    if (!m_vk_cmds.empty()) {
+        vkFreeCommandBuffers(m_vk_device, m_vk_cmd_pool,
+                             static_cast<uint32_t>(m_vk_cmds.size()),
+                             m_vk_cmds.data());
+    }
+
+    if (m_vk_cmd_pool) {
+        vkDestroyCommandPool(m_vk_device, m_vk_cmd_pool, nullptr);
+    }
+
     if (!m_vk_swapchain_images.empty()) {
         m_vk_swapchain_images.clear();
     }
@@ -655,6 +766,10 @@ void App::quit() {
         vkDestroyInstance(m_vk_instance, nullptr);
         m_vk_instance = VK_NULL_HANDLE;
     }
+    if (m_window) {
+        m_window.reset();
+    }
+    SDL_Quit();
 }
 
 } // namespace vbr::app
