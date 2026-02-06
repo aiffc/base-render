@@ -57,6 +57,14 @@ debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
     return VK_FALSE;
 }
 
+void App::updateWindowSize() {
+    SDL_GetWindowSize(m_window.get(), &m_window_size.x, &m_window_size.y);
+    if (m_vk_phy_device && m_vk_surface) {
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_vk_phy_device, m_vk_surface,
+                                                  &m_vk_phy_info.capabilities);
+    }
+}
+
 bool App::initInstance() {
     // check layer
     uint32_t support_layer_count = 0;
@@ -510,17 +518,25 @@ bool App::initLogicDevice() {
 }
 
 bool App::initSwapchain() {
+    vkDeviceWaitIdle(m_vk_device);
+
     uint32_t image_count = m_vk_phy_info.capabilities.minImageCount + 1;
     if (image_count > m_vk_phy_info.capabilities.maxImageCount &&
         m_vk_phy_info.capabilities.maxImageCount > 0) {
         image_count = m_vk_phy_info.capabilities.maxImageCount;
     }
-    int w, h;
-    SDL_GetWindowSize(m_window.get(), &w, &h);
+
     VkExtent2D extent{
-        .width = static_cast<uint32_t>(w),
-        .height = static_cast<uint32_t>(h),
+        .width = static_cast<uint32_t>(m_window_size.x),
+        .height = static_cast<uint32_t>(m_window_size.y),
     };
+
+    extent.width = std::clamp(extent.width,
+                              m_vk_phy_info.capabilities.maxImageExtent.width,
+                              m_vk_phy_info.capabilities.minImageExtent.width);
+    extent.height = std::clamp(
+        extent.height, m_vk_phy_info.capabilities.maxImageExtent.height,
+        m_vk_phy_info.capabilities.minImageExtent.height);
 
     uint32_t graphics_queue_indices = m_vk_queue_indices.graphics.value();
     uint32_t present_queue_indices = m_vk_queue_indices.present.value();
@@ -530,6 +546,11 @@ bool App::initSwapchain() {
         indices.push_back(graphics_queue_indices);
         indices.push_back(present_queue_indices);
         sharing_mode = VK_SHARING_MODE_CONCURRENT;
+    }
+    VkSwapchainKHR old_swapchain = VK_NULL_HANDLE;
+    if (m_vk_swapchain != VK_NULL_HANDLE) {
+        old_swapchain = m_vk_swapchain;
+        m_vk_swapchain = VK_NULL_HANDLE;
     }
 
     VkSwapchainCreateInfoKHR info{
@@ -550,13 +571,20 @@ bool App::initSwapchain() {
         .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
         .presentMode = m_vk_phy_info.present_mode,
         .clipped = VK_TRUE,
-        .oldSwapchain = nullptr,
+        .oldSwapchain = old_swapchain,
     };
 
     if (VK_SUCCESS !=
         vkCreateSwapchainKHR(m_vk_device, &info, nullptr, &m_vk_swapchain)) {
         spdlog::error("failed to create swaochain khr");
         return false;
+    }
+    // destroy old swapchain
+    if (old_swapchain != VK_NULL_HANDLE) {
+        vkDestroySwapchainKHR(m_vk_device, old_swapchain, nullptr);
+        if (!m_vk_swapchain_images.empty()) {
+            m_vk_swapchain_images.clear();
+        }
     }
 
     uint32_t count = 0;
@@ -585,7 +613,7 @@ bool App::initSwapchain() {
     return true;
 }
 
-bool App::initCmds(uint32_t cmd_count) {
+bool App::initCmds() {
     VkCommandPoolCreateInfo info{
         .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .pNext = nullptr,
@@ -598,17 +626,16 @@ bool App::initCmds(uint32_t cmd_count) {
         return false;
     }
 
-    m_vk_cmds.resize(cmd_count);
     VkCommandBufferAllocateInfo alloc_info{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .pNext = nullptr,
         .commandPool = m_vk_cmd_pool,
         .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = cmd_count,
+        .commandBufferCount = 1,
     };
 
     if (VK_SUCCESS !=
-        vkAllocateCommandBuffers(m_vk_device, &alloc_info, m_vk_cmds.data())) {
+        vkAllocateCommandBuffers(m_vk_device, &alloc_info, &m_vk_cmd)) {
         spdlog::error("failed to alloc commands");
         return false;
     }
@@ -698,16 +725,24 @@ bool App::begin(float r, float g, float b, float a) {
         spdlog::warn("fence timeout");
         return false;
     }
-    vkResetFences(m_vk_device, 1, &m_vk_sync.in_flight_fence);
 
-    if (VK_SUCCESS !=
-        vkAcquireNextImageKHR(m_vk_device, m_vk_swapchain, UINT64_MAX,
-                              m_vk_sync.image_available, VK_NULL_HANDLE,
-                              &m_vk_current_frame)) {
+    VkResult acquire_ret = vkAcquireNextImageKHR(
+        m_vk_device, m_vk_swapchain, UINT64_MAX, m_vk_sync.image_available,
+        VK_NULL_HANDLE, &m_vk_current_frame);
+    if (acquire_ret == VK_ERROR_OUT_OF_DATE_KHR) {
+        spdlog::info("recreate swapchain");
+        updateWindowSize();
+        if (!initSwapchain()) {
+            spdlog::error("failed to recreate swapchain");
+            return false;
+        }
+        return false;
+    } else if (VK_SUCCESS != acquire_ret && VK_SUBOPTIMAL_KHR != acquire_ret) {
         spdlog::warn("failed to get current image index");
         return false;
     }
-    vkResetCommandBuffer(m_vk_cmds[0], 0);
+    vkResetFences(m_vk_device, 1, &m_vk_sync.in_flight_fence);
+    vkResetCommandBuffer(m_vk_cmd, 0);
 
     VkCommandBufferBeginInfo info{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -715,7 +750,7 @@ bool App::begin(float r, float g, float b, float a) {
         .flags = 0,
         .pInheritanceInfo = nullptr,
     };
-    if (VK_SUCCESS != vkBeginCommandBuffer(m_vk_cmds[0], &info)) {
+    if (VK_SUCCESS != vkBeginCommandBuffer(m_vk_cmd, &info)) {
         return false;
     }
 
@@ -738,7 +773,7 @@ bool App::begin(float r, float g, float b, float a) {
                 .layerCount = 1,
             },
     };
-    vkCmdPipelineBarrier(m_vk_cmds[0], VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+    vkCmdPipelineBarrier(m_vk_cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0,
                          nullptr, 0, nullptr, 1, &acquire_barrier);
 
@@ -778,13 +813,13 @@ bool App::begin(float r, float g, float b, float a) {
         .pDepthAttachment = nullptr,
         .pStencilAttachment = nullptr,
     };
-    vkCmdBeginRendering(m_vk_cmds[0], &rinfo);
+    vkCmdBeginRendering(m_vk_cmd, &rinfo);
 
     return true;
 }
 
 bool App::end() {
-    vkCmdEndRendering(m_vk_cmds[0]);
+    vkCmdEndRendering(m_vk_cmd);
 
     VkImageMemoryBarrier present_barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -805,12 +840,12 @@ bool App::end() {
                 .layerCount = 1,
             },
     };
-    vkCmdPipelineBarrier(m_vk_cmds[0],
+    vkCmdPipelineBarrier(m_vk_cmd,
                          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                          VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0,
                          nullptr, 1, &present_barrier);
 
-    if (VK_SUCCESS != vkEndCommandBuffer(m_vk_cmds[0])) {
+    if (VK_SUCCESS != vkEndCommandBuffer(m_vk_cmd)) {
         return false;
     }
 
@@ -823,7 +858,7 @@ bool App::end() {
         .pWaitSemaphores = &m_vk_sync.image_available,
         .pWaitDstStageMask = &wait_stage,
         .commandBufferCount = 1,
-        .pCommandBuffers = &m_vk_cmds[0],
+        .pCommandBuffers = &m_vk_cmd,
         .signalSemaphoreCount = 1,
         .pSignalSemaphores = &m_vk_sync.render_done,
     };
@@ -843,7 +878,17 @@ bool App::end() {
         .pImageIndices = &m_vk_current_frame,
         .pResults = nullptr,
     };
-    if (VK_SUCCESS != vkQueuePresentKHR(m_vk_queues.present, &present_info)) {
+    VkResult present_ret =
+        vkQueuePresentKHR(m_vk_queues.present, &present_info);
+    if (VK_ERROR_OUT_OF_DATE_KHR == present_ret ||
+        VK_SUBOPTIMAL_KHR == present_ret) {
+        spdlog::info("recreate swapchain");
+        updateWindowSize();
+        if (!initSwapchain()) {
+            spdlog::error("failed to recreate swapchain");
+            return false;
+        }
+    } else if (VK_SUCCESS != present_ret) {
         spdlog::error("failed to submit queue");
         return false;
     }
@@ -873,10 +918,8 @@ void App::quit() {
 
     m_vk_sync.destroy(m_vk_device);
 
-    if (!m_vk_cmds.empty()) {
-        vkFreeCommandBuffers(m_vk_device, m_vk_cmd_pool,
-                             static_cast<uint32_t>(m_vk_cmds.size()),
-                             m_vk_cmds.data());
+    if (m_vk_cmd != VK_NULL_HANDLE) {
+        vkFreeCommandBuffers(m_vk_device, m_vk_cmd_pool, 1, &m_vk_cmd);
     }
 
     if (m_vk_cmd_pool) {

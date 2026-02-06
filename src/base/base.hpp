@@ -73,8 +73,7 @@ class App {
     VkSwapchainKHR m_vk_swapchain;
     std::vector<std::unique_ptr<vbr::image::Image>> m_vk_swapchain_images;
     VkCommandPool m_vk_cmd_pool;
-    // TODO for now just support one command buffer
-    std::vector<VkCommandBuffer> m_vk_cmds;
+    VkCommandBuffer m_vk_cmd;
     SyncObjs m_vk_sync;
 
   protected:
@@ -85,13 +84,15 @@ class App {
     uint32_t m_vk_current_frame = 0;
 
   private:
+    // internal function for sdl
+    void updateWindowSize();
     // internal function for vulkan init
     [[nodiscard]] bool initInstance();
     [[nodiscard]] bool initSurface();
     [[nodiscard]] bool pickupPhyDevice();
     [[nodiscard]] bool initLogicDevice();
     [[nodiscard]] bool initSwapchain();
-    [[nodiscard]] bool initCmds(uint32_t cmd_count = 1);
+    [[nodiscard]] bool initCmds();
     [[nodiscard]] bool initSync();
 
   public:
