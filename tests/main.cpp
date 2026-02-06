@@ -1,5 +1,5 @@
 
-#include "base/base.hpp"
+#include "base_triangle.hpp"
 #include <SDL3/SDL_init.h>
 #include <algorithm>
 #include <memory>
@@ -7,12 +7,12 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
-std::unique_ptr<vbr::app::App> app;
+std::unique_ptr<BaseTriangle> app;
 
 SDL_AppResult SDL_AppInit(void **appstate [[maybe_unused]],
                           int argc [[maybe_unused]],
                           char **argv [[maybe_unused]]) {
-    app = std::make_unique<vbr::app::App>();
+    app = std::make_unique<BaseTriangle>();
     if (!app->init()) {
         return SDL_APP_FAILURE;
     }

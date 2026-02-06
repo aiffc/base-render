@@ -11,6 +11,10 @@
 #include <optional>
 #include <vector>
 
+namespace vbr::gpipeline {
+class Pipeline;
+}
+
 namespace vbr::app {
 struct GPUInfo {
     VkPhysicalDeviceFeatures features;
@@ -79,6 +83,12 @@ class App {
   protected:
     bool begin(float r = 0.0f, float g = 0.0f, float b = 0.0f, float a = 0.0f);
     bool end();
+    void setViewport(float w = 0.0f, float h = 0.0f, float x = 0.0f,
+                     float y = 0.0f, float min = 0.0f, float max = 1.0f);
+    void setScissor(uint32_t w = 0, uint32_t h = 0, int32_t x = 0,
+                    int32_t y = 0);
+    void bindPipeline(vbr::gpipeline::Pipeline &pipeline);
+    void draw();
 
   private:
     uint32_t m_vk_current_frame = 0;

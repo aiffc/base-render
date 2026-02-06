@@ -1,4 +1,5 @@
 #include "base.hpp"
+#include "graphics_pipeline.hpp"
 #include "image.hpp"
 #include "spdlog/spdlog.h"
 #include "vulkan/vulkan_core.h"
@@ -23,14 +24,20 @@ const std::vector<char const *> validation_layers = {
 };
 
 void SyncObjs::destroy(const VkDevice device) {
+    if (device == VK_NULL_HANDLE) {
+        return;
+    }
     if (image_available != VK_NULL_HANDLE) {
         vkDestroySemaphore(device, image_available, nullptr);
+        image_available = VK_NULL_HANDLE;
     }
     if (render_done != VK_NULL_HANDLE) {
         vkDestroySemaphore(device, render_done, nullptr);
+        render_done = VK_NULL_HANDLE;
     }
     if (in_flight_fence != VK_NULL_HANDLE) {
         vkDestroyFence(device, in_flight_fence, nullptr);
+        in_flight_fence = VK_NULL_HANDLE;
     }
 }
 
@@ -787,25 +794,33 @@ bool App::begin(float r, float g, float b, float a) {
         .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-        .clearValue = {.color = {.float32 = {r, g, b, a}}},
+        .clearValue =
+            {
+                .color =
+                    {
+                        .float32 = {r, g, b, a},
+                    },
+            },
     };
 
     VkRenderingInfo rinfo{
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
         .pNext = nullptr,
         .flags = 0,
-        .renderArea = {.offset =
-                           {
-                               .x = 0,
-                               .y = 0,
-                           },
-                       .extent =
-                           {
-                               .width = static_cast<uint32_t>(m_window_size.x),
-                               .height = static_cast<uint32_t>(m_window_size.y),
-                           }
+        .renderArea =
+            {
+                .offset =
+                    {
+                        .x = 0,
+                        .y = 0,
+                    },
+                .extent =
+                    {
+                        .width = static_cast<uint32_t>(m_window_size.x),
+                        .height = static_cast<uint32_t>(m_window_size.y),
+                    },
 
-        },
+            },
         .layerCount = 1,
         .viewMask = 0,
         .colorAttachmentCount = 1,
@@ -893,6 +908,58 @@ bool App::end() {
         return false;
     }
     return true;
+};
+
+void App::setViewport(float w, float h, float x, float y, float min,
+                      float max) {
+    VkViewport v{
+        .x = x,
+        .y = y,
+        .width = w,
+        .height = h,
+        .minDepth = min,
+        .maxDepth = max,
+    };
+    if (w == 0.0f) {
+        v.width = static_cast<float>(m_window_size.x);
+    }
+    if (h == 0.0f) {
+        v.height = static_cast<float>(m_window_size.y);
+    }
+    vkCmdSetViewport(m_vk_cmd, 0, 1, &v);
+}
+
+void App::setScissor(uint32_t w, uint32_t h, int32_t x, int32_t y) {
+    VkRect2D v{
+        .offset =
+            {
+                .x = x,
+                .y = y,
+            },
+        .extent =
+            {
+                .width = w,
+                .height = h,
+
+            },
+
+    };
+    if (w == 0) {
+        v.extent.width = m_window_size.x;
+    }
+    if (h == 0) {
+        v.extent.height = m_window_size.y;
+    }
+    vkCmdSetScissor(m_vk_cmd, 0, 1, &v);
+}
+
+void App::bindPipeline(vbr::gpipeline::Pipeline &pipeline) {
+    if (*pipeline != VK_NULL_HANDLE) {
+        vkCmdBindPipeline(m_vk_cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
+    }
+}
+void App::draw() {
+    vkCmdDraw(m_vk_cmd, 3, 1, 0, 0); // TODO test for now
 }
 
 void App::update() {}
@@ -912,7 +979,11 @@ void App::render() {
 }
 
 void App::quit() {
-    if (m_vk_device) {
+    if (m_vk_device == VK_NULL_HANDLE) {
+        return;
+    }
+
+    if (m_vk_device != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(m_vk_device);
     }
 
@@ -920,10 +991,12 @@ void App::quit() {
 
     if (m_vk_cmd != VK_NULL_HANDLE) {
         vkFreeCommandBuffers(m_vk_device, m_vk_cmd_pool, 1, &m_vk_cmd);
+        m_vk_cmd = VK_NULL_HANDLE;
     }
 
     if (m_vk_cmd_pool) {
         vkDestroyCommandPool(m_vk_device, m_vk_cmd_pool, nullptr);
+        m_vk_cmd_pool = VK_NULL_HANDLE;
     }
 
     if (!m_vk_swapchain_images.empty()) {

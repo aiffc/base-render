@@ -24,10 +24,13 @@ find_package(spdlog REQUIRED)
 
 
 set(SOURCES
-  src/main.cpp
   src/base/image.cpp
   src/base/util.cpp
   src/base/base.cpp
+  src/base/graphics_pipeline.cpp
+
+  tests/base_triangle.cpp
+  tests/main.cpp
 )
 
 add_executable(${TARGET} ${SOURCES})
