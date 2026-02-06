@@ -22,6 +22,18 @@ const std::vector<char const *> validation_layers = {
     "VK_LAYER_KHRONOS_validation",
 };
 
+void SyncObjs::destroy(const VkDevice device) {
+    if (image_available != VK_NULL_HANDLE) {
+        vkDestroySemaphore(device, image_available, nullptr);
+    }
+    if (render_done != VK_NULL_HANDLE) {
+        vkDestroySemaphore(device, render_done, nullptr);
+    }
+    if (in_flight_fence != VK_NULL_HANDLE) {
+        vkDestroyFence(device, in_flight_fence, nullptr);
+    }
+}
+
 App::App(const glm::ivec2 &window_size) : m_window_size(window_size) {}
 App::~App() { quit(); }
 
@@ -604,6 +616,36 @@ bool App::initCmds(uint32_t cmd_count) {
     return true;
 }
 
+bool App::initSync() {
+    VkSemaphoreCreateInfo sinfo{
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+    };
+    VkFenceCreateInfo finfo{
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = VK_FENCE_CREATE_SIGNALED_BIT,
+    };
+
+    if (VK_SUCCESS != vkCreateSemaphore(m_vk_device, &sinfo, nullptr,
+                                        &m_vk_sync.image_available)) {
+        spdlog::error("failed to create semaphore for image available");
+        return false;
+    }
+    if (VK_SUCCESS != vkCreateSemaphore(m_vk_device, &sinfo, nullptr,
+                                        &m_vk_sync.render_done)) {
+        spdlog::error("failed to create semaphore for render done");
+        return false;
+    }
+    if (VK_SUCCESS != vkCreateFence(m_vk_device, &finfo, nullptr,
+                                    &m_vk_sync.in_flight_fence)) {
+        spdlog::error("failed to create fence for in flight fence");
+        return false;
+    }
+    return true;
+}
+
 bool App::init(SDL_InitFlags flags) {
     if (m_debug) {
         spdlog::set_level(spdlog::level::info);
@@ -643,11 +685,30 @@ bool App::init(SDL_InitFlags flags) {
     if (!initCmds()) {
         return false;
     }
+    if (!initSync()) {
+        return false;
+    }
     return true;
 }
 
-bool App::begin() {
-    static uint32_t index = 0;
+bool App::begin(float r, float g, float b, float a) {
+    if (VK_SUCCESS != vkWaitForFences(m_vk_device, 1,
+                                      &m_vk_sync.in_flight_fence, VK_TRUE,
+                                      UINT64_MAX)) {
+        spdlog::warn("fence timeout");
+        return false;
+    }
+    vkResetFences(m_vk_device, 1, &m_vk_sync.in_flight_fence);
+
+    if (VK_SUCCESS !=
+        vkAcquireNextImageKHR(m_vk_device, m_vk_swapchain, UINT64_MAX,
+                              m_vk_sync.image_available, VK_NULL_HANDLE,
+                              &m_vk_current_frame)) {
+        spdlog::warn("failed to get current image index");
+        return false;
+    }
+    vkResetCommandBuffer(m_vk_cmds[0], 0);
+
     VkCommandBufferBeginInfo info{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .pNext = nullptr,
@@ -657,17 +718,41 @@ bool App::begin() {
     if (VK_SUCCESS != vkBeginCommandBuffer(m_vk_cmds[0], &info)) {
         return false;
     }
+
+    VkImageMemoryBarrier acquire_barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .pNext = nullptr,
+        .srcAccessMask = 0,
+        .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = m_vk_swapchain_images[m_vk_current_frame]->image,
+        .subresourceRange =
+            {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+    };
+    vkCmdPipelineBarrier(m_vk_cmds[0], VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0,
+                         nullptr, 0, nullptr, 1, &acquire_barrier);
+
     VkRenderingAttachmentInfo attachment_info{
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
         .pNext = nullptr,
-        .imageView = m_vk_swapchain_images[index]->view,
+        .imageView = m_vk_swapchain_images[m_vk_current_frame]->view,
         .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .resolveMode = VK_RESOLVE_MODE_NONE,
         .resolveImageView = nullptr,
         .resolveImageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
         .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
-        .clearValue = {.color = {.float32 = {1.0f, 1.0f, 0.0f, 1.0f}}},
+        .clearValue = {.color = {.float32 = {r, g, b, a}}},
     };
 
     VkRenderingInfo rinfo{
@@ -694,14 +779,72 @@ bool App::begin() {
         .pStencilAttachment = nullptr,
     };
     vkCmdBeginRendering(m_vk_cmds[0], &rinfo);
-    index++;
-    index = index % m_vk_swapchain_images.size();
+
     return true;
 }
 
 bool App::end() {
     vkCmdEndRendering(m_vk_cmds[0]);
+
+    VkImageMemoryBarrier present_barrier = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .pNext = nullptr,
+        .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        .dstAccessMask = 0,
+        .oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = m_vk_swapchain_images[m_vk_current_frame]->image,
+        .subresourceRange =
+            {
+                .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = 1,
+            },
+    };
+    vkCmdPipelineBarrier(m_vk_cmds[0],
+                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                         VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0,
+                         nullptr, 1, &present_barrier);
+
     if (VK_SUCCESS != vkEndCommandBuffer(m_vk_cmds[0])) {
+        return false;
+    }
+
+    VkPipelineStageFlags wait_stage =
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    VkSubmitInfo submit_info{
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .pNext = nullptr,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &m_vk_sync.image_available,
+        .pWaitDstStageMask = &wait_stage,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &m_vk_cmds[0],
+        .signalSemaphoreCount = 1,
+        .pSignalSemaphores = &m_vk_sync.render_done,
+    };
+    if (VK_SUCCESS != vkQueueSubmit(m_vk_queues.graphics, 1, &submit_info,
+                                    m_vk_sync.in_flight_fence)) {
+        spdlog::error("failed to submit queue");
+        return false;
+    }
+
+    VkPresentInfoKHR present_info{
+        .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .pNext = nullptr,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &m_vk_sync.render_done,
+        .swapchainCount = 1,
+        .pSwapchains = &m_vk_swapchain,
+        .pImageIndices = &m_vk_current_frame,
+        .pResults = nullptr,
+    };
+    if (VK_SUCCESS != vkQueuePresentKHR(m_vk_queues.present, &present_info)) {
+        spdlog::error("failed to submit queue");
         return false;
     }
     return true;
@@ -718,12 +861,18 @@ void App::event(SDL_Event *event) {
 }
 
 void App::render() {
-    if (begin()) {
+    if (begin(1.0f)) {
         end();
     }
 }
 
 void App::quit() {
+    if (m_vk_device) {
+        vkDeviceWaitIdle(m_vk_device);
+    }
+
+    m_vk_sync.destroy(m_vk_device);
+
     if (!m_vk_cmds.empty()) {
         vkFreeCommandBuffers(m_vk_device, m_vk_cmd_pool,
                              static_cast<uint32_t>(m_vk_cmds.size()),

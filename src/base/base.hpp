@@ -38,6 +38,14 @@ struct Queues {
     VkQueue compute;
 };
 
+struct SyncObjs {
+    VkSemaphore image_available = VK_NULL_HANDLE;
+    VkSemaphore render_done = VK_NULL_HANDLE;
+    VkFence in_flight_fence = VK_NULL_HANDLE;
+
+    void destroy(const VkDevice device);
+};
+
 class App {
   protected:
     bool m_debug = true;
@@ -67,6 +75,14 @@ class App {
     VkCommandPool m_vk_cmd_pool;
     // TODO for now just support one command buffer
     std::vector<VkCommandBuffer> m_vk_cmds;
+    SyncObjs m_vk_sync;
+
+  protected:
+    bool begin(float r = 0.0f, float g = 0.0f, float b = 0.0f, float a = 0.0f);
+    bool end();
+
+  private:
+    uint32_t m_vk_current_frame = 0;
 
   private:
     // internal function for vulkan init
@@ -76,10 +92,7 @@ class App {
     [[nodiscard]] bool initLogicDevice();
     [[nodiscard]] bool initSwapchain();
     [[nodiscard]] bool initCmds(uint32_t cmd_count = 1);
-
-  protected:
-    bool begin();
-    bool end();
+    [[nodiscard]] bool initSync();
 
   public:
     App(const glm::ivec2 &window_size = {1024, 980});
