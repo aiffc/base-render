@@ -8,9 +8,9 @@ bool BaseTriangle::init(SDL_InitFlags flag) {
     }
     m_pipeline = new vbr::gpipeline::Pipeline(m_vk_device);
     m_pipeline->addShader(VK_SHADER_STAGE_VERTEX_BIT,
-                          "../shaders/base_triangle/vert.spv");
+                          "../tests/shaders/base_triangle/vert.spv");
     m_pipeline->addShader(VK_SHADER_STAGE_FRAGMENT_BIT,
-                          "../shaders/base_triangle/frag.spv");
+                          "../tests/shaders/base_triangle/frag.spv");
     m_pipeline->addViewport(static_cast<float>(m_window_size.x),
                             static_cast<float>(m_window_size.y));
     m_pipeline->addScissor(m_window_size.x, m_window_size.y);

@@ -1,6 +1,6 @@
-#include "base.hpp"
-#include "graphics_pipeline.hpp"
-#include "image.hpp"
+#include "../../inc/base.hpp"
+#include "../../inc/graphics_pipeline.hpp"
+#include "../../inc/image.hpp"
 #include "spdlog/spdlog.h"
 #include "vulkan/vulkan_core.h"
 #include <SDL3/SDL_error.h>

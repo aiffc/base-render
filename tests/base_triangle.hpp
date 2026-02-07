@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../src/base/base.hpp"
-#include "../src/base/graphics_pipeline.hpp"
+#include "../inc/base.hpp"
+#include "../inc/graphics_pipeline.hpp"
 
 class BaseTriangle : public vbr::app::App {
   private:

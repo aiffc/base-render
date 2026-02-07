@@ -1,6 +1,6 @@
-#include "graphics_pipeline.hpp"
+#include "../../inc/graphics_pipeline.hpp"
+#include "../../inc/util.hpp"
 #include "spdlog/spdlog.h"
-#include "util.hpp"
 #include <SDL3/SDL_iostream.h>
 #include <cstdint>
 #include <vector>
