@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string_view>
 #include <vector>
 #include <vulkan/vulkan.h>
@@ -55,4 +56,22 @@ VkPipelineColorBlendStateCreateInfo fillPipelineColorBlend(
 VkPipelineDynamicStateCreateInfo
 fillPipelineDynamicState(const std::vector<VkDynamicState> &states);
 
+struct GPUInfo {
+    VkPhysicalDeviceFeatures features;
+    // format properties
+    // image format properties
+    VkPhysicalDeviceMemoryProperties memory_properties;
+    VkPhysicalDeviceProperties properties;
+    std::vector<VkQueueFamilyProperties> queue_family_properties;
+    VkPresentModeKHR present_mode;
+    VkSurfaceCapabilitiesKHR capabilities;
+    VkSurfaceFormatKHR surface_format;
+};
+
+struct QueueFamilyIndices {
+    std::optional<uint32_t> graphics;
+    std::optional<uint32_t> transfer;
+    std::optional<uint32_t> present;
+    std::optional<uint32_t> compute;
+};
 } // namespace vbr::util

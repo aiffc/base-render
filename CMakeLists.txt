@@ -22,22 +22,29 @@ find_package(Vulkan REQUIRED)
 find_package(glm REQUIRED)
 find_package(spdlog REQUIRED)
 
-
-set(SOURCES
+# compile lib
+set(LIB_SOURCES
   src/base/image.cpp
   src/base/util.cpp
+  src/base/device.cpp
+  src/base/swapchain.cpp
   src/base/base.cpp
   src/base/graphics_pipeline.cpp
-
-  tests/base_triangle.cpp
-  tests/main.cpp
 )
 
-add_executable(${TARGET} ${SOURCES})
+add_library(${PROJECT_NAME} STATIC ${LIB_SOURCES})
 
-target_link_libraries(${TARGET}
+target_link_libraries(${PROJECT_NAME} PUBLIC
   ${SDL3_LIBRARIES}
   ${Vulkan_LIBRARIES}
   glm::glm
   spdlog::spdlog
 )
+
+# generate exe
+set(BASE_TRIANGLE_SOURCE
+  tests/base_triangle/base_triangle.cpp
+  tests/base_triangle/main.cpp)
+
+add_executable(base_triangle ${BASE_TRIANGLE_SOURCE})
+target_link_libraries(base_triangle vbr)

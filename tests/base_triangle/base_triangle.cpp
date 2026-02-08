@@ -6,7 +6,7 @@ bool BaseTriangle::init(SDL_InitFlags flag) {
     if (!vbr::app::App::init(flag)) {
         return false;
     }
-    m_pipeline = new vbr::gpipeline::Pipeline(m_vk_device);
+    m_pipeline = new vbr::gpipeline::Pipeline(**m_vk_device);
     m_pipeline->addShader(VK_SHADER_STAGE_VERTEX_BIT,
                           "../tests/shaders/base_triangle/vert.spv");
     m_pipeline->addShader(VK_SHADER_STAGE_FRAGMENT_BIT,

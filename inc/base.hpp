@@ -1,54 +1,20 @@
 #pragma once
 
 #include "SDL3/SDL.h"
+#include "device.hpp"
 #include "glm/glm.hpp"
-#include "image.hpp"
+#include "swapchain.hpp"
 #include "vulkan/vulkan.h"
 #include "vulkan/vulkan_core.h"
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_video.h>
 #include <memory>
-#include <optional>
-#include <vector>
 
 namespace vbr::gpipeline {
 class Pipeline;
 }
 
 namespace vbr::app {
-struct GPUInfo {
-    VkPhysicalDeviceFeatures features;
-    // format properties
-    // image format properties
-    VkPhysicalDeviceMemoryProperties memory_properties;
-    VkPhysicalDeviceProperties properties;
-    std::vector<VkQueueFamilyProperties> queue_family_properties;
-    VkPresentModeKHR present_mode;
-    VkSurfaceCapabilitiesKHR capabilities;
-    VkSurfaceFormatKHR surface_format;
-};
-
-struct QueueFamilyIndices {
-    std::optional<uint32_t> graphics;
-    std::optional<uint32_t> transfer;
-    std::optional<uint32_t> present;
-    std::optional<uint32_t> compute;
-};
-
-struct Queues {
-    VkQueue graphics;
-    VkQueue present;
-    VkQueue transfer;
-    VkQueue compute;
-};
-
-struct SyncObjs {
-    VkSemaphore image_available = VK_NULL_HANDLE;
-    VkSemaphore render_done = VK_NULL_HANDLE;
-    VkFence in_flight_fence = VK_NULL_HANDLE;
-
-    void destroy(const VkDevice device);
-};
 
 class App {
   protected:
@@ -69,16 +35,8 @@ class App {
     VkInstance m_vk_instance;
     VkDebugUtilsMessengerEXT m_vk_dbg_messager;
     VkSurfaceKHR m_vk_surface;
-    VkPhysicalDevice m_vk_phy_device;
-    GPUInfo m_vk_phy_info;
-    QueueFamilyIndices m_vk_queue_indices;
-    VkDevice m_vk_device;
-    Queues m_vk_queues;
-    VkSwapchainKHR m_vk_swapchain;
-    std::vector<std::unique_ptr<vbr::image::Image>> m_vk_swapchain_images;
-    VkCommandPool m_vk_cmd_pool;
-    VkCommandBuffer m_vk_cmd;
-    SyncObjs m_vk_sync;
+    std::unique_ptr<vbr::device::Device> m_vk_device;
+    std::unique_ptr<vbr::swapchain::Swapchain> m_vk_swapchain;
 
   protected:
     bool begin(float r = 0.0f, float g = 0.0f, float b = 0.0f, float a = 0.0f);
@@ -91,19 +49,11 @@ class App {
     void draw();
 
   private:
-    uint32_t m_vk_current_frame = 0;
-
-  private:
     // internal function for sdl
     void updateWindowSize();
     // internal function for vulkan init
     [[nodiscard]] bool initInstance();
     [[nodiscard]] bool initSurface();
-    [[nodiscard]] bool pickupPhyDevice();
-    [[nodiscard]] bool initLogicDevice();
-    [[nodiscard]] bool initSwapchain();
-    [[nodiscard]] bool initCmds();
-    [[nodiscard]] bool initSync();
 
   public:
     App(const glm::ivec2 &window_size = {1024, 980});

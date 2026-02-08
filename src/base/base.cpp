@@ -1,6 +1,5 @@
 #include "../../inc/base.hpp"
 #include "../../inc/graphics_pipeline.hpp"
-#include "../../inc/image.hpp"
 #include "spdlog/spdlog.h"
 #include "vulkan/vulkan_core.h"
 #include <SDL3/SDL_error.h>
@@ -13,33 +12,13 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
-#include <set>
 #include <spdlog/common.h>
 #include <vector>
 
 namespace vbr::app {
-
 const std::vector<char const *> validation_layers = {
     "VK_LAYER_KHRONOS_validation",
 };
-
-void SyncObjs::destroy(const VkDevice device) {
-    if (device == VK_NULL_HANDLE) {
-        return;
-    }
-    if (image_available != VK_NULL_HANDLE) {
-        vkDestroySemaphore(device, image_available, nullptr);
-        image_available = VK_NULL_HANDLE;
-    }
-    if (render_done != VK_NULL_HANDLE) {
-        vkDestroySemaphore(device, render_done, nullptr);
-        render_done = VK_NULL_HANDLE;
-    }
-    if (in_flight_fence != VK_NULL_HANDLE) {
-        vkDestroyFence(device, in_flight_fence, nullptr);
-        in_flight_fence = VK_NULL_HANDLE;
-    }
-}
 
 App::App(const glm::ivec2 &window_size) : m_window_size(window_size) {}
 App::~App() { quit(); }
@@ -66,10 +45,7 @@ debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 
 void App::updateWindowSize() {
     SDL_GetWindowSize(m_window.get(), &m_window_size.x, &m_window_size.y);
-    if (m_vk_phy_device && m_vk_surface) {
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_vk_phy_device, m_vk_surface,
-                                                  &m_vk_phy_info.capabilities);
-    }
+    m_vk_device->updateWindowSize();
 }
 
 bool App::initInstance() {
@@ -216,470 +192,6 @@ bool App::initSurface() {
                                     &m_vk_surface);
 }
 
-bool App::pickupPhyDevice() {
-    uint32_t count = 0;
-    if (VK_SUCCESS !=
-        vkEnumeratePhysicalDevices(m_vk_instance, &count, nullptr)) {
-        spdlog::error("failed to pickup physical device");
-        return false;
-    }
-    std::vector<VkPhysicalDevice> physical_devices{count};
-    if (VK_SUCCESS != vkEnumeratePhysicalDevices(m_vk_instance, &count,
-                                                 physical_devices.data())) {
-        spdlog::error("failed to pickup physical device");
-        return false;
-    }
-
-    bool found = false;
-    for (const auto &phy : physical_devices) {
-        VkPhysicalDeviceProperties properties;
-        VkPhysicalDeviceFeatures features;
-        vkGetPhysicalDeviceProperties(phy, &properties);
-        vkGetPhysicalDeviceFeatures(phy, &features);
-
-        spdlog::info("device name {}", properties.deviceName);
-
-        if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&
-            features.geometryShader) {
-            m_vk_phy_device = phy;
-            found = true;
-            break;
-        }
-    }
-
-    // select the bad one
-    if (!found && count != 0) {
-        spdlog::warn("no sutiable device, select the bad one");
-        m_vk_phy_device = physical_devices[0];
-        found = true;
-    }
-
-    if (found) {
-        vkGetPhysicalDeviceProperties(m_vk_phy_device,
-                                      &m_vk_phy_info.properties);
-        vkGetPhysicalDeviceFeatures(m_vk_phy_device, &m_vk_phy_info.features);
-        vkGetPhysicalDeviceMemoryProperties(m_vk_phy_device,
-                                            &m_vk_phy_info.memory_properties);
-        uint32_t pcount = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(m_vk_phy_device, &pcount,
-                                                 nullptr);
-        m_vk_phy_info.queue_family_properties.resize(pcount);
-        vkGetPhysicalDeviceQueueFamilyProperties(
-            m_vk_phy_device, &pcount,
-            m_vk_phy_info.queue_family_properties.data());
-        // select present mode
-        count = 0;
-        if (VK_SUCCESS == vkGetPhysicalDeviceSurfacePresentModesKHR(
-                              m_vk_phy_device, m_vk_surface, &count, nullptr)) {
-            std::vector<VkPresentModeKHR> support_present_modes{count};
-            if (VK_SUCCESS == vkGetPhysicalDeviceSurfacePresentModesKHR(
-                                  m_vk_phy_device, m_vk_surface, &count,
-                                  support_present_modes.data())) {
-                if (std::ranges::any_of(
-                        support_present_modes, [](const auto &present_mode) {
-                            return present_mode == VK_PRESENT_MODE_MAILBOX_KHR;
-                        })) {
-                    spdlog::info(
-                        "select present mode VK_PRESENT_MODE_MAILBOX_KHR");
-                    m_vk_phy_info.present_mode = VK_PRESENT_MODE_MAILBOX_KHR;
-                } else {
-                    spdlog::info("select present mode default");
-                    m_vk_phy_info.present_mode = support_present_modes[0];
-                }
-            } else {
-                spdlog::error("failed to get physical device present mode");
-                return false;
-            }
-        } else {
-            spdlog::error("failed to get physical device present mode");
-            return false;
-        }
-        // get surface capabilities
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(m_vk_phy_device, m_vk_surface,
-                                                  &m_vk_phy_info.capabilities);
-        // get formats info
-        count = 0;
-        if (VK_SUCCESS == vkGetPhysicalDeviceSurfaceFormatsKHR(
-                              m_vk_phy_device, m_vk_surface, &count, nullptr)) {
-            std::vector<VkSurfaceFormatKHR> surface_formats{count};
-            surface_formats.resize(count);
-            if (VK_SUCCESS == vkGetPhysicalDeviceSurfaceFormatsKHR(
-                                  m_vk_phy_device, m_vk_surface, &count,
-                                  surface_formats.data())) {
-                if (std::ranges::any_of(
-                        surface_formats, [](const auto &surface_format) {
-                            return surface_format.colorSpace ==
-                                       VK_COLOR_SPACE_SRGB_NONLINEAR_KHR &&
-                                   surface_format.format ==
-                                       VK_FORMAT_B8G8R8A8_SRGB;
-                        })) {
-                    m_vk_phy_info.surface_format.format =
-                        VK_FORMAT_B8G8R8A8_SRGB;
-                    m_vk_phy_info.surface_format.colorSpace =
-                        VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-                } else {
-                    m_vk_phy_info.surface_format = surface_formats[0];
-                }
-            } else {
-                spdlog::error("failed to get physical device surface formats");
-                return false;
-            }
-        } else {
-            spdlog::error("failed to get physical device surface formats");
-            return false;
-        }
-
-        m_vk_queue_indices.graphics = std::nullopt;
-        m_vk_queue_indices.transfer = std::nullopt;
-        m_vk_queue_indices.present = std::nullopt;
-        m_vk_queue_indices.compute = std::nullopt;
-        uint32_t i = 0;
-        for (const auto &family : m_vk_phy_info.queue_family_properties) {
-            if ((family.queueFlags & VK_QUEUE_GRAPHICS_BIT) &&
-                (!m_vk_queue_indices.graphics.has_value())) {
-                spdlog::info("graphics queue index {}", i);
-                m_vk_queue_indices.graphics = i;
-            }
-            if ((family.queueFlags & VK_QUEUE_COMPUTE_BIT) &&
-                (!m_vk_queue_indices.compute.has_value())) {
-                spdlog::info("compute queue index {}", i);
-                m_vk_queue_indices.compute = i;
-            }
-            if ((family.queueFlags & VK_QUEUE_TRANSFER_BIT) &&
-                (!m_vk_queue_indices.transfer.has_value())) {
-                spdlog::info("transfer queue index {}", i);
-                m_vk_queue_indices.transfer = i;
-            }
-            VkBool32 present_support = false;
-            vkGetPhysicalDeviceSurfaceSupportKHR(
-                m_vk_phy_device, i, m_vk_surface, &present_support);
-            if (present_support == VK_TRUE) {
-                spdlog::info("present index {}", i);
-                m_vk_queue_indices.present = i;
-            }
-            i++;
-        }
-        if (!m_vk_queue_indices.graphics.has_value() ||
-            !m_vk_queue_indices.present.has_value()) {
-            return false;
-        }
-    }
-    return found;
-}
-
-bool App::initLogicDevice() {
-    std::vector<VkDeviceQueueCreateInfo> queue_infos;
-    std::set<uint32_t> queue_index;
-    if (m_vk_queue_indices.graphics.has_value()) {
-        queue_index.insert(m_vk_queue_indices.graphics.value());
-    }
-    if (m_vk_queue_indices.transfer.has_value()) {
-        queue_index.insert(m_vk_queue_indices.transfer.value());
-    }
-    if (m_vk_queue_indices.present.has_value()) {
-        queue_index.insert(m_vk_queue_indices.present.value());
-    }
-    if (m_vk_queue_indices.compute.has_value()) {
-        queue_index.insert(m_vk_queue_indices.compute.value());
-    }
-    float p = 1.0f;
-    for (const auto &index : queue_index) {
-        VkDeviceQueueCreateInfo queue_info{
-            .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .pNext = nullptr,
-            .flags = 0,
-            .queueFamilyIndex = index,
-            .queueCount = 1,
-            .pQueuePriorities = &p,
-        };
-
-        queue_infos.push_back(queue_info);
-    }
-
-    uint32_t support_layer_count = 0;
-    std::vector<VkLayerProperties> support_layeries;
-    if (VK_SUCCESS == vkEnumerateDeviceLayerProperties(
-                          m_vk_phy_device, &support_layer_count, nullptr)) {
-        support_layeries.resize(support_layer_count);
-        if (VK_SUCCESS != vkEnumerateDeviceLayerProperties(
-                              m_vk_phy_device, &support_layer_count,
-                              support_layeries.data())) {
-            spdlog::error("failed enumerate device layer");
-            return false;
-        }
-    } else {
-        spdlog::error("failed enumerate device layer count");
-        return false;
-    }
-
-    // dump all supported layer
-    for (const auto &support_layer : support_layeries) {
-        spdlog::info("{}", support_layer.layerName);
-    }
-
-    uint32_t support_extension_count = 0;
-    std::vector<VkExtensionProperties> support_extensions;
-
-    if (VK_SUCCESS ==
-        vkEnumerateDeviceExtensionProperties(
-            m_vk_phy_device, nullptr, &support_extension_count, nullptr)) {
-        support_extensions.resize(support_extension_count);
-        if (VK_SUCCESS !=
-            vkEnumerateDeviceExtensionProperties(m_vk_phy_device, nullptr,
-                                                 &support_extension_count,
-                                                 support_extensions.data())) {
-            spdlog::error("failed enumerate device extension");
-            return false;
-        }
-    } else {
-        spdlog::error("failed enumerate device extension");
-        return false;
-    }
-
-    // dump all supported extension
-    for (const auto &support_extension : support_extensions) {
-        spdlog::info("{}", support_extension.extensionName);
-    }
-
-    std::vector<const char *> required_layers;
-    if (m_debug) {
-        required_layers.assign(validation_layers.begin(),
-                               validation_layers.end());
-    }
-
-    std::vector<const char *> required_extensions = {
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-        VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
-    };
-
-    for (const auto &required_layer : required_layers) {
-        if (std::ranges::none_of(
-                support_layeries, [required_layer](const auto &support_layer) {
-                    return !strcmp(required_layer, support_layer.layerName);
-                })) {
-            spdlog::error("device layer {} not supported", required_layer);
-            return false;
-        }
-    }
-
-    for (const auto &required_extension : required_extensions) {
-        if (std::ranges::none_of(
-                support_extensions,
-                [required_extension](const auto &support_extension) {
-                    return !strcmp(required_extension,
-                                   support_extension.extensionName);
-                })) {
-            spdlog::error("device extension {} not supported",
-                          required_extension);
-            return false;
-        }
-    }
-
-    VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamic_render_feature{
-        .sType =
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
-        .pNext = nullptr,
-        .dynamicRendering = VK_TRUE,
-    };
-
-    VkDeviceCreateInfo info{
-        .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext = (VkPhysicalDeviceDynamicRenderingFeaturesKHR
-                      *)&dynamic_render_feature,
-        .flags = 0,
-        .queueCreateInfoCount = static_cast<uint32_t>(queue_infos.size()),
-        .pQueueCreateInfos = queue_infos.data(),
-        .enabledLayerCount = static_cast<uint32_t>(required_layers.size()),
-        .ppEnabledLayerNames = required_layers.data(),
-        .enabledExtensionCount =
-            static_cast<uint32_t>(required_extensions.size()),
-        .ppEnabledExtensionNames = required_extensions.data(),
-        .pEnabledFeatures = &m_vk_phy_info.features,
-    };
-
-    if (VK_SUCCESS !=
-        vkCreateDevice(m_vk_phy_device, &info, nullptr, &m_vk_device)) {
-        return false;
-    }
-
-    if (m_vk_queue_indices.graphics.has_value()) {
-        vkGetDeviceQueue(m_vk_device, m_vk_queue_indices.graphics.value(), 0,
-                         &m_vk_queues.graphics);
-    }
-    if (m_vk_queue_indices.present.has_value()) {
-        vkGetDeviceQueue(m_vk_device, m_vk_queue_indices.present.value(), 0,
-                         &m_vk_queues.present);
-    }
-
-    if (m_vk_queue_indices.transfer.has_value()) {
-        vkGetDeviceQueue(m_vk_device, m_vk_queue_indices.transfer.value(), 0,
-                         &m_vk_queues.transfer);
-    }
-
-    if (m_vk_queue_indices.compute.has_value()) {
-        vkGetDeviceQueue(m_vk_device, m_vk_queue_indices.compute.value(), 0,
-                         &m_vk_queues.compute);
-    }
-
-    return true;
-}
-
-bool App::initSwapchain() {
-    vkDeviceWaitIdle(m_vk_device);
-
-    uint32_t image_count = m_vk_phy_info.capabilities.minImageCount + 1;
-    if (image_count > m_vk_phy_info.capabilities.maxImageCount &&
-        m_vk_phy_info.capabilities.maxImageCount > 0) {
-        image_count = m_vk_phy_info.capabilities.maxImageCount;
-    }
-
-    VkExtent2D extent{
-        .width = static_cast<uint32_t>(m_window_size.x),
-        .height = static_cast<uint32_t>(m_window_size.y),
-    };
-
-    extent.width = std::clamp(extent.width,
-                              m_vk_phy_info.capabilities.maxImageExtent.width,
-                              m_vk_phy_info.capabilities.minImageExtent.width);
-    extent.height = std::clamp(
-        extent.height, m_vk_phy_info.capabilities.maxImageExtent.height,
-        m_vk_phy_info.capabilities.minImageExtent.height);
-
-    uint32_t graphics_queue_indices = m_vk_queue_indices.graphics.value();
-    uint32_t present_queue_indices = m_vk_queue_indices.present.value();
-    std::vector<uint32_t> indices;
-    VkSharingMode sharing_mode = VK_SHARING_MODE_EXCLUSIVE;
-    if (graphics_queue_indices != present_queue_indices) {
-        indices.push_back(graphics_queue_indices);
-        indices.push_back(present_queue_indices);
-        sharing_mode = VK_SHARING_MODE_CONCURRENT;
-    }
-    VkSwapchainKHR old_swapchain = VK_NULL_HANDLE;
-    if (m_vk_swapchain != VK_NULL_HANDLE) {
-        old_swapchain = m_vk_swapchain;
-        m_vk_swapchain = VK_NULL_HANDLE;
-    }
-
-    VkSwapchainCreateInfoKHR info{
-        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .pNext = nullptr,
-        .flags = 0,
-        .surface = m_vk_surface,
-        .minImageCount = image_count,
-        .imageFormat = m_vk_phy_info.surface_format.format,
-        .imageColorSpace = m_vk_phy_info.surface_format.colorSpace,
-        .imageExtent = extent,
-        .imageArrayLayers = 1,
-        .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-        .imageSharingMode = sharing_mode,
-        .queueFamilyIndexCount = static_cast<uint32_t>(indices.size()),
-        .pQueueFamilyIndices = indices.data(),
-        .preTransform = m_vk_phy_info.capabilities.currentTransform,
-        .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-        .presentMode = m_vk_phy_info.present_mode,
-        .clipped = VK_TRUE,
-        .oldSwapchain = old_swapchain,
-    };
-
-    if (VK_SUCCESS !=
-        vkCreateSwapchainKHR(m_vk_device, &info, nullptr, &m_vk_swapchain)) {
-        spdlog::error("failed to create swaochain khr");
-        return false;
-    }
-    // destroy old swapchain
-    if (old_swapchain != VK_NULL_HANDLE) {
-        vkDestroySwapchainKHR(m_vk_device, old_swapchain, nullptr);
-        if (!m_vk_swapchain_images.empty()) {
-            m_vk_swapchain_images.clear();
-        }
-    }
-
-    uint32_t count = 0;
-    if (VK_SUCCESS ==
-        vkGetSwapchainImagesKHR(m_vk_device, m_vk_swapchain, &count, nullptr)) {
-        std::vector<VkImage> swapchain_images{count};
-        if (VK_SUCCESS == vkGetSwapchainImagesKHR(m_vk_device, m_vk_swapchain,
-                                                  &count,
-                                                  swapchain_images.data())) {
-
-            for (size_t i = 0; i < count; ++i) {
-                auto siv = std::make_unique<vbr::image::Image>(
-                    m_vk_device, swapchain_images[i], true);
-                siv->init(m_vk_phy_info.surface_format.format);
-                m_vk_swapchain_images.push_back(std::move(siv));
-            }
-        } else {
-            spdlog::error("failed to get swapchain images");
-            return false;
-        }
-    } else {
-        spdlog::error("failed to get swapchain images");
-        return false;
-    }
-
-    return true;
-}
-
-bool App::initCmds() {
-    VkCommandPoolCreateInfo info{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-        .pNext = nullptr,
-        .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        .queueFamilyIndex = m_vk_queue_indices.graphics.value(),
-    };
-    if (VK_SUCCESS !=
-        vkCreateCommandPool(m_vk_device, &info, nullptr, &m_vk_cmd_pool)) {
-        spdlog::error("failed to create command pool");
-        return false;
-    }
-
-    VkCommandBufferAllocateInfo alloc_info{
-        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .pNext = nullptr,
-        .commandPool = m_vk_cmd_pool,
-        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = 1,
-    };
-
-    if (VK_SUCCESS !=
-        vkAllocateCommandBuffers(m_vk_device, &alloc_info, &m_vk_cmd)) {
-        spdlog::error("failed to alloc commands");
-        return false;
-    }
-
-    return true;
-}
-
-bool App::initSync() {
-    VkSemaphoreCreateInfo sinfo{
-        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-        .pNext = nullptr,
-        .flags = 0,
-    };
-    VkFenceCreateInfo finfo{
-        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-        .pNext = nullptr,
-        .flags = VK_FENCE_CREATE_SIGNALED_BIT,
-    };
-
-    if (VK_SUCCESS != vkCreateSemaphore(m_vk_device, &sinfo, nullptr,
-                                        &m_vk_sync.image_available)) {
-        spdlog::error("failed to create semaphore for image available");
-        return false;
-    }
-    if (VK_SUCCESS != vkCreateSemaphore(m_vk_device, &sinfo, nullptr,
-                                        &m_vk_sync.render_done)) {
-        spdlog::error("failed to create semaphore for render done");
-        return false;
-    }
-    if (VK_SUCCESS != vkCreateFence(m_vk_device, &finfo, nullptr,
-                                    &m_vk_sync.in_flight_fence)) {
-        spdlog::error("failed to create fence for in flight fence");
-        return false;
-    }
-    return true;
-}
-
 bool App::init(SDL_InitFlags flags) {
     if (m_debug) {
         spdlog::set_level(spdlog::level::info);
@@ -706,40 +218,35 @@ bool App::init(SDL_InitFlags flags) {
         spdlog::error("sdl init vulkan surface failed {}", SDL_GetError());
         return false;
     }
-    if (!pickupPhyDevice()) {
-        spdlog::error("unable to found sutiable physical device");
+
+    m_vk_device = std::make_unique<vbr::device::Device>(m_vk_surface, m_debug);
+    if (!m_vk_device->init(m_vk_instance)) {
+        spdlog::error("unable to create logic device");
         return false;
     }
-    if (!initLogicDevice()) {
+
+    m_vk_swapchain = std::make_unique<vbr::swapchain::Swapchain>(*m_vk_device);
+    if (!m_vk_swapchain->init(m_window_size)) {
+        spdlog::error("unable to create swapchain");
         return false;
     }
-    if (!initSwapchain()) {
-        return false;
-    }
-    if (!initCmds()) {
-        return false;
-    }
-    if (!initSync()) {
-        return false;
-    }
+
     return true;
 }
 
 bool App::begin(float r, float g, float b, float a) {
-    if (VK_SUCCESS != vkWaitForFences(m_vk_device, 1,
-                                      &m_vk_sync.in_flight_fence, VK_TRUE,
+    if (VK_SUCCESS != vkWaitForFences(**m_vk_device, 1,
+                                      &m_vk_device->inFlightFence(), VK_TRUE,
                                       UINT64_MAX)) {
         spdlog::warn("fence timeout");
         return false;
     }
 
-    VkResult acquire_ret = vkAcquireNextImageKHR(
-        m_vk_device, m_vk_swapchain, UINT64_MAX, m_vk_sync.image_available,
-        VK_NULL_HANDLE, &m_vk_current_frame);
+    VkResult acquire_ret = m_vk_swapchain->acquireNext();
     if (acquire_ret == VK_ERROR_OUT_OF_DATE_KHR) {
         spdlog::info("recreate swapchain");
         updateWindowSize();
-        if (!initSwapchain()) {
+        if (!m_vk_swapchain->init(m_window_size)) {
             spdlog::error("failed to recreate swapchain");
             return false;
         }
@@ -748,8 +255,8 @@ bool App::begin(float r, float g, float b, float a) {
         spdlog::warn("failed to get current image index");
         return false;
     }
-    vkResetFences(m_vk_device, 1, &m_vk_sync.in_flight_fence);
-    vkResetCommandBuffer(m_vk_cmd, 0);
+    vkResetFences(**m_vk_device, 1, &m_vk_device->inFlightFence());
+    vkResetCommandBuffer(m_vk_device->cmd(), 0);
 
     VkCommandBufferBeginInfo info{
         .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -757,7 +264,7 @@ bool App::begin(float r, float g, float b, float a) {
         .flags = 0,
         .pInheritanceInfo = nullptr,
     };
-    if (VK_SUCCESS != vkBeginCommandBuffer(m_vk_cmd, &info)) {
+    if (VK_SUCCESS != vkBeginCommandBuffer(m_vk_device->cmd(), &info)) {
         return false;
     }
 
@@ -770,7 +277,7 @@ bool App::begin(float r, float g, float b, float a) {
         .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = m_vk_swapchain_images[m_vk_current_frame]->image,
+        .image = m_vk_swapchain->currentImage(),
         .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -780,14 +287,14 @@ bool App::begin(float r, float g, float b, float a) {
                 .layerCount = 1,
             },
     };
-    vkCmdPipelineBarrier(m_vk_cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+    vkCmdPipelineBarrier(m_vk_device->cmd(), VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0,
                          nullptr, 0, nullptr, 1, &acquire_barrier);
 
     VkRenderingAttachmentInfo attachment_info{
         .sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO_KHR,
         .pNext = nullptr,
-        .imageView = m_vk_swapchain_images[m_vk_current_frame]->view,
+        .imageView = m_vk_swapchain->currentView(),
         .imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         .resolveMode = VK_RESOLVE_MODE_NONE,
         .resolveImageView = nullptr,
@@ -828,13 +335,13 @@ bool App::begin(float r, float g, float b, float a) {
         .pDepthAttachment = nullptr,
         .pStencilAttachment = nullptr,
     };
-    vkCmdBeginRendering(m_vk_cmd, &rinfo);
+    vkCmdBeginRendering(m_vk_device->cmd(), &rinfo);
 
     return true;
 }
 
 bool App::end() {
-    vkCmdEndRendering(m_vk_cmd);
+    vkCmdEndRendering(m_vk_device->cmd());
 
     VkImageMemoryBarrier present_barrier = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
@@ -845,7 +352,7 @@ bool App::end() {
         .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
         .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = m_vk_swapchain_images[m_vk_current_frame]->image,
+        .image = m_vk_swapchain->currentImage(),
         .subresourceRange =
             {
                 .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
@@ -855,12 +362,12 @@ bool App::end() {
                 .layerCount = 1,
             },
     };
-    vkCmdPipelineBarrier(m_vk_cmd,
+    vkCmdPipelineBarrier(m_vk_device->cmd(),
                          VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                          VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0,
                          nullptr, 1, &present_barrier);
 
-    if (VK_SUCCESS != vkEndCommandBuffer(m_vk_cmd)) {
+    if (VK_SUCCESS != vkEndCommandBuffer(m_vk_device->cmd())) {
         return false;
     }
 
@@ -870,36 +377,38 @@ bool App::end() {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
         .pNext = nullptr,
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &m_vk_sync.image_available,
+        .pWaitSemaphores = &m_vk_device->imageAvailable(),
         .pWaitDstStageMask = &wait_stage,
         .commandBufferCount = 1,
-        .pCommandBuffers = &m_vk_cmd,
+        .pCommandBuffers = &m_vk_device->cmd(),
         .signalSemaphoreCount = 1,
-        .pSignalSemaphores = &m_vk_sync.render_done,
+        .pSignalSemaphores = &m_vk_device->renderDone(),
     };
-    if (VK_SUCCESS != vkQueueSubmit(m_vk_queues.graphics, 1, &submit_info,
-                                    m_vk_sync.in_flight_fence)) {
+    if (VK_SUCCESS != vkQueueSubmit(m_vk_device->graphicsQueue(), 1,
+                                    &submit_info,
+                                    m_vk_device->inFlightFence())) {
         spdlog::error("failed to submit queue");
         return false;
     }
 
+    uint32_t current_index = m_vk_swapchain->currentIndex();
     VkPresentInfoKHR present_info{
         .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .pNext = nullptr,
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &m_vk_sync.render_done,
+        .pWaitSemaphores = &m_vk_device->renderDone(),
         .swapchainCount = 1,
-        .pSwapchains = &m_vk_swapchain,
-        .pImageIndices = &m_vk_current_frame,
+        .pSwapchains = &**m_vk_swapchain,
+        .pImageIndices = &current_index,
         .pResults = nullptr,
     };
     VkResult present_ret =
-        vkQueuePresentKHR(m_vk_queues.present, &present_info);
+        vkQueuePresentKHR(m_vk_device->presentQueue(), &present_info);
     if (VK_ERROR_OUT_OF_DATE_KHR == present_ret ||
         VK_SUBOPTIMAL_KHR == present_ret) {
         spdlog::info("recreate swapchain");
         updateWindowSize();
-        if (!initSwapchain()) {
+        if (!m_vk_swapchain->init(m_window_size)) {
             spdlog::error("failed to recreate swapchain");
             return false;
         }
@@ -926,7 +435,7 @@ void App::setViewport(float w, float h, float x, float y, float min,
     if (h == 0.0f) {
         v.height = static_cast<float>(m_window_size.y);
     }
-    vkCmdSetViewport(m_vk_cmd, 0, 1, &v);
+    vkCmdSetViewport(m_vk_device->cmd(), 0, 1, &v);
 }
 
 void App::setScissor(uint32_t w, uint32_t h, int32_t x, int32_t y) {
@@ -950,16 +459,17 @@ void App::setScissor(uint32_t w, uint32_t h, int32_t x, int32_t y) {
     if (h == 0) {
         v.extent.height = m_window_size.y;
     }
-    vkCmdSetScissor(m_vk_cmd, 0, 1, &v);
+    vkCmdSetScissor(m_vk_device->cmd(), 0, 1, &v);
 }
 
 void App::bindPipeline(vbr::gpipeline::Pipeline &pipeline) {
     if (*pipeline != VK_NULL_HANDLE) {
-        vkCmdBindPipeline(m_vk_cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, *pipeline);
+        vkCmdBindPipeline(m_vk_device->cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS,
+                          *pipeline);
     }
 }
 void App::draw() {
-    vkCmdDraw(m_vk_cmd, 3, 1, 0, 0); // TODO test for now
+    vkCmdDraw(m_vk_device->cmd(), 3, 1, 0, 0); // TODO test for now
 }
 
 void App::update() {}
@@ -979,38 +489,11 @@ void App::render() {
 }
 
 void App::quit() {
-    if (m_vk_device == VK_NULL_HANDLE) {
-        return;
+    if (m_vk_swapchain) {
+        m_vk_swapchain.reset();
     }
-
-    if (m_vk_device != VK_NULL_HANDLE) {
-        vkDeviceWaitIdle(m_vk_device);
-    }
-
-    m_vk_sync.destroy(m_vk_device);
-
-    if (m_vk_cmd != VK_NULL_HANDLE) {
-        vkFreeCommandBuffers(m_vk_device, m_vk_cmd_pool, 1, &m_vk_cmd);
-        m_vk_cmd = VK_NULL_HANDLE;
-    }
-
-    if (m_vk_cmd_pool) {
-        vkDestroyCommandPool(m_vk_device, m_vk_cmd_pool, nullptr);
-        m_vk_cmd_pool = VK_NULL_HANDLE;
-    }
-
-    if (!m_vk_swapchain_images.empty()) {
-        m_vk_swapchain_images.clear();
-    }
-
-    if (m_vk_swapchain != VK_NULL_HANDLE) {
-        vkDestroySwapchainKHR(m_vk_device, m_vk_swapchain, nullptr);
-        m_vk_swapchain = VK_NULL_HANDLE;
-    }
-
-    if (m_vk_device != VK_NULL_HANDLE) {
-        vkDestroyDevice(m_vk_device, nullptr);
-        m_vk_device = VK_NULL_HANDLE;
+    if (m_vk_device) {
+        m_vk_device.reset();
     }
 
     if (m_vk_surface != VK_NULL_HANDLE) {
