@@ -468,6 +468,13 @@ void App::bindPipeline(vbr::gpipeline::Pipeline &pipeline) {
                           *pipeline);
     }
 }
+
+void App::bindVertex(vbr::buffer::Buffer &buffer) {
+    VkBuffer buffers = buffer.buffer;
+    VkDeviceSize offsets = 0;
+    vkCmdBindVertexBuffers(m_vk_device->cmd(), 0, 1, &buffers, &offsets);
+}
+
 void App::draw() {
     vkCmdDraw(m_vk_device->cmd(), 3, 1, 0, 0); // TODO test for now
 }

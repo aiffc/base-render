@@ -204,4 +204,25 @@ void Pipeline::addColorBlendAttachemt(
     m_color_blend_attachment.push_back(v);
 }
 
+void Pipeline::addBinding(uint32_t binding, uint32_t stride,
+                          VkVertexInputRate rate) {
+    VkVertexInputBindingDescription n{
+        .binding = binding,
+        .stride = stride,
+        .inputRate = rate,
+    };
+    m_vertex_bindings.push_back(n);
+}
+
+void Pipeline::addAttribute(uint32_t location, uint32_t binding,
+                            VkFormat format, uint32_t offset) {
+    VkVertexInputAttributeDescription n{
+        .location = location,
+        .binding = binding,
+        .format = format,
+        .offset = offset,
+    };
+    m_vertex_attributes.push_back(n);
+}
+
 } // namespace vbr::gpipeline

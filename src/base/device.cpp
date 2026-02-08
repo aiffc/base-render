@@ -1,7 +1,10 @@
 #include "../../inc/device.hpp"
+#include "../../inc/buffer.hpp"
 #include "glm/glm.hpp"
 #include "spdlog/spdlog.h"
+#include "vulkan/vulkan_core.h"
 #include <algorithm>
+#include <memory>
 #include <optional>
 #include <set>
 
@@ -447,5 +450,105 @@ bool Device::init(const VkInstance &instance) {
         return false;
     }
     return true;
+}
+
+VkCommandBuffer Device::beginTemporaryCommand() {
+    VkCommandBufferAllocateInfo info{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .pNext = nullptr,
+        .commandPool = m_vk_cmd_pool,
+        .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = 1,
+
+    };
+    VkCommandBuffer ret = VK_NULL_HANDLE;
+    if (VK_SUCCESS != vkAllocateCommandBuffers(m_vk_device, &info, &ret)) {
+        spdlog::error("failed to create temporary command buffer");
+    }
+    VkCommandBufferBeginInfo begin_info{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .pNext = nullptr,
+        .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        .pInheritanceInfo = nullptr,
+    };
+    if (VK_SUCCESS != vkBeginCommandBuffer(ret, &begin_info)) {
+        spdlog::error("failed to begin temporary cmd");
+        vkFreeCommandBuffers(m_vk_device, m_vk_cmd_pool, 1, &ret);
+        ret = VK_NULL_HANDLE;
+    }
+    return ret;
+}
+
+void Device::endTemporaryCommand(VkCommandBuffer &cmd) {
+    vkEndCommandBuffer(cmd);
+    VkSubmitInfo info{
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .pNext = nullptr,
+        .waitSemaphoreCount = 0,
+        .pWaitSemaphores = nullptr,
+        .pWaitDstStageMask = 0,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &cmd,
+        .signalSemaphoreCount = 0,
+        .pSignalSemaphores = nullptr,
+    };
+    vkQueueSubmit(m_vk_queues.transfer, 1, &info, VK_NULL_HANDLE);
+    vkQueueWaitIdle(m_vk_queues.transfer);
+    vkFreeCommandBuffers(m_vk_device, m_vk_cmd_pool, 1, &cmd);
+}
+
+uint32_t Device::findMemoryType(uint32_t type_filter,
+                                VkMemoryPropertyFlags properties) {
+    for (uint32_t i = 0; i < m_vk_phy_info.memory_properties.memoryTypeCount;
+         i++) {
+        if ((type_filter & (1 << i)) &&
+            (m_vk_phy_info.memory_properties.memoryTypes[i].propertyFlags &
+             properties) == properties) {
+            return i;
+        }
+    }
+
+    throw std::runtime_error("failed to find suitable memory type!");
+}
+
+std::unique_ptr<vbr::buffer::Buffer>
+Device::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
+                     VkMemoryPropertyFlags properties) {
+    auto ret = std::make_unique<vbr::buffer::Buffer>(*this);
+    VkBufferCreateInfo binfo{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .size = size,
+        .usage = usage,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = nullptr,
+    };
+    if (VK_SUCCESS !=
+        vkCreateBuffer(m_vk_device, &binfo, nullptr, &ret->buffer)) {
+        spdlog::error("failed to create buffer");
+        return nullptr;
+    }
+
+    VkMemoryRequirements requirements;
+    vkGetBufferMemoryRequirements(m_vk_device, ret->buffer, &requirements);
+
+    VkMemoryAllocateInfo minfo{
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .pNext = nullptr,
+        .allocationSize = requirements.size,
+        .memoryTypeIndex =
+            findMemoryType(requirements.memoryTypeBits, properties),
+    };
+    if (VK_SUCCESS !=
+        vkAllocateMemory(m_vk_device, &minfo, nullptr, &ret->memory)) {
+        spdlog::error("failed to alloc memory for buffer");
+        vkDestroyBuffer(m_vk_device, ret->buffer, nullptr);
+        ret->buffer = VK_NULL_HANDLE;
+        return nullptr;
+    }
+    ret->bind();
+    return ret;
 }
 } // namespace vbr::device

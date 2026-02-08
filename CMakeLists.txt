@@ -29,6 +29,7 @@ set(LIB_SOURCES
   src/base/device.cpp
   src/base/swapchain.cpp
   src/base/base.cpp
+  src/base/buffer.cpp
   src/base/graphics_pipeline.cpp
 )
 
@@ -42,9 +43,18 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
 )
 
 # generate exe
+# base triangle
 set(BASE_TRIANGLE_SOURCE
   tests/base_triangle/base_triangle.cpp
   tests/base_triangle/main.cpp)
 
 add_executable(base_triangle ${BASE_TRIANGLE_SOURCE})
 target_link_libraries(base_triangle vbr)
+
+# buffer triangle
+set(BUFFER_TRIANGLE_SOURCE
+  tests/buffer_triangle/buffer_triangle.cpp
+  tests/buffer_triangle/main.cpp)
+
+add_executable(buffer_triangle ${BUFFER_TRIANGLE_SOURCE})
+target_link_libraries(buffer_triangle vbr)

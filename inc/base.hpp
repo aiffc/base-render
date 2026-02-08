@@ -46,6 +46,7 @@ class App {
     void setScissor(uint32_t w = 0, uint32_t h = 0, int32_t x = 0,
                     int32_t y = 0);
     void bindPipeline(vbr::gpipeline::Pipeline &pipeline);
+    void bindVertex(vbr::buffer::Buffer &buffer);
     void draw();
 
   private:
