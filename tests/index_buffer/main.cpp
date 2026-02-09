@@ -1,5 +1,5 @@
 
-#include "base_triangle.hpp"
+#include "index_buffer.hpp"
 #include <SDL3/SDL_init.h>
 #include <algorithm>
 #include <memory>

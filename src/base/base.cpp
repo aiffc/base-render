@@ -475,8 +475,18 @@ void App::bindVertex(vbr::buffer::Buffer &buffer) {
     vkCmdBindVertexBuffers(m_vk_device->cmd(), 0, 1, &buffers, &offsets);
 }
 
-void App::draw() {
-    vkCmdDraw(m_vk_device->cmd(), 3, 1, 0, 0); // TODO test for now
+void App::draw(uint32_t count) {
+    vkCmdDraw(m_vk_device->cmd(), count, 1, 0, 0); // TODO test for now
+}
+
+void App::bindIndex(vbr::buffer::Buffer &buffer) {
+    // use 32
+    vkCmdBindIndexBuffer(m_vk_device->cmd(), buffer.buffer, 0,
+                         VK_INDEX_TYPE_UINT32);
+}
+
+void App::drawIndex(uint32_t count) {
+    vkCmdDrawIndexed(m_vk_device->cmd(), count, 1, 0, 0, 0);
 }
 
 void App::update() {}

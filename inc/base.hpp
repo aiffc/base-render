@@ -47,7 +47,9 @@ class App {
                     int32_t y = 0);
     void bindPipeline(vbr::gpipeline::Pipeline &pipeline);
     void bindVertex(vbr::buffer::Buffer &buffer);
-    void draw();
+    void draw(uint32_t count);
+    void bindIndex(vbr::buffer::Buffer &buffer);
+    void drawIndex(uint32_t count);
 
   private:
     // internal function for sdl

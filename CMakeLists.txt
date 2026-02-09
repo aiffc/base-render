@@ -58,3 +58,11 @@ set(BUFFER_TRIANGLE_SOURCE
 
 add_executable(buffer_triangle ${BUFFER_TRIANGLE_SOURCE})
 target_link_libraries(buffer_triangle vbr)
+
+# index buffer
+set(BUFFER_TRIANGLE_SOURCE
+  tests/index_buffer/index_buffer.cpp
+  tests/index_buffer/main.cpp)
+
+add_executable(index ${BUFFER_TRIANGLE_SOURCE})
+target_link_libraries(index vbr)

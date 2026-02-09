@@ -1,11 +1,19 @@
 #pragma once
 
 #include "../../inc/base.hpp"
+#include "../../inc/buffer.hpp"
 #include "../../inc/graphics_pipeline.hpp"
 #include <memory>
 
+struct VertexInfo {
+    glm::vec2 pos;
+    glm::vec3 color;
+};
+
 class App : public vbr::app::App {
   private:
+    std::unique_ptr<vbr::buffer::Buffer> m_vbuffer;
+    std::unique_ptr<vbr::buffer::Buffer> m_ibuffer;
     std::unique_ptr<vbr::gpipeline::Pipeline> m_pipeline;
 
   public:

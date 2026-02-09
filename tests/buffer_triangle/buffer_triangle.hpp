@@ -10,14 +10,14 @@ struct VertexInfo {
     glm::vec3 color;
 };
 
-class BufferTriangle : public vbr::app::App {
+class App : public vbr::app::App {
   private:
     std::unique_ptr<vbr::buffer::Buffer> m_vbuffer;
-    vbr::gpipeline::Pipeline *m_pipeline;
+    std::unique_ptr<vbr::gpipeline::Pipeline> m_pipeline;
 
   public:
     using vbr::app::App::App;
-    ~BufferTriangle() override;
+    ~App() override;
 
     [[nodiscard]] bool init(SDL_InitFlags flag = SDL_INIT_AUDIO) override;
     void update() override;

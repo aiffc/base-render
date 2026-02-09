@@ -1,12 +1,13 @@
 #include "base_triangle.hpp"
+#include <memory>
 
-BaseTriangle::~BaseTriangle() { quit(); }
+App::~App() { quit(); }
 
-bool BaseTriangle::init(SDL_InitFlags flag) {
+bool App::init(SDL_InitFlags flag) {
     if (!vbr::app::App::init(flag)) {
         return false;
     }
-    m_pipeline = new vbr::gpipeline::Pipeline(**m_vk_device);
+    m_pipeline = std::make_unique<vbr::gpipeline::Pipeline>(**m_vk_device);
     m_pipeline->addShader(VK_SHADER_STAGE_VERTEX_BIT,
                           "../tests/shaders/base_triangle/vert.spv");
     m_pipeline->addShader(VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -21,18 +22,18 @@ bool BaseTriangle::init(SDL_InitFlags flag) {
     return true;
 }
 
-void BaseTriangle::update() { vbr::app::App::update(); }
+void App::update() { vbr::app::App::update(); }
 
-void BaseTriangle::event(SDL_Event *event) { vbr::app::App::event(event); }
+void App::event(SDL_Event *event) { vbr::app::App::event(event); }
 
-void BaseTriangle::render() {
+void App::render() {
     if (begin()) {
         bindPipeline(*m_pipeline);
         setViewport();
         setScissor();
-        draw();
+        draw(3);
         end();
     }
 }
 
-void BaseTriangle::quit() { delete m_pipeline; }
+void App::quit() { m_pipeline.reset(); }

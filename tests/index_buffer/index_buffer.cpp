@@ -1,5 +1,7 @@
-#include "buffer_triangle.hpp"
+#include "index_buffer.hpp"
+#include "vulkan/vulkan_core.h"
 #include <cstddef>
+#include <cstdint>
 
 App::~App() { quit(); }
 
@@ -26,12 +28,17 @@ bool App::init(SDL_InitFlags flag) {
     }
 
     const std::vector<VertexInfo> vertices = {
-        {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-        {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-        {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+        {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+        {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+        {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}},
     };
     m_vbuffer = m_vk_device->createUsageBuffer<VertexInfo>(
         vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+
+    std::vector<uint32_t> indexs{0, 1, 2, 2, 3, 0};
+    m_ibuffer = m_vk_device->createUsageBuffer<uint32_t>(
+        indexs, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
     return true;
 }
 
@@ -43,14 +50,16 @@ void App::render() {
     if (begin()) {
         bindPipeline(*m_pipeline);
         bindVertex(*m_vbuffer);
+        bindIndex(*m_ibuffer);
         setViewport();
         setScissor();
-        draw(3);
+        drawIndex(6);
         end();
     }
 }
 
 void App::quit() {
+    m_ibuffer.reset();
     m_vbuffer.reset();
     m_pipeline.reset();
 }
