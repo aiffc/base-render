@@ -2,10 +2,12 @@
 
 #include "../../inc/base.hpp"
 #include "../../inc/graphics_pipeline.hpp"
+#include "../../inc/layout.hpp"
 #include <memory>
 
 class App : public vbr::app::App {
   private:
+    std::unique_ptr<vbr::layout::Layout> m_layout;
     std::unique_ptr<vbr::gpipeline::Pipeline> m_pipeline;
 
   public:

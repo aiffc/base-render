@@ -7,6 +7,10 @@ bool App::init(SDL_InitFlags flag) {
     if (!vbr::app::App::init(flag)) {
         return false;
     }
+
+    m_layout = std::make_unique<vbr::layout::Layout>(**m_vk_device);
+    m_layout->init();
+
     m_pipeline = std::make_unique<vbr::gpipeline::Pipeline>(**m_vk_device);
     m_pipeline->addShader(VK_SHADER_STAGE_VERTEX_BIT,
                           "../tests/shaders/base_triangle/vert.spv");
@@ -16,7 +20,7 @@ bool App::init(SDL_InitFlags flag) {
                             static_cast<float>(m_window_size.y));
     m_pipeline->addScissor(m_window_size.x, m_window_size.y);
     m_pipeline->addColorBlendAttachemt();
-    if (!m_pipeline->init()) {
+    if (!m_pipeline->init(**m_layout)) {
         return false;
     }
     return true;

@@ -14,11 +14,6 @@ Pipeline::~Pipeline() {
         vkDeviceWaitIdle(m_device);
     }
 
-    if (m_device != VK_NULL_HANDLE && m_layout != VK_NULL_HANDLE) {
-        vkDestroyPipelineLayout(m_device, m_layout, nullptr);
-        m_layout = VK_NULL_HANDLE;
-    }
-
     if (m_device != VK_NULL_HANDLE && m_pipeline != VK_NULL_HANDLE) {
         vkDestroyPipeline(m_device, m_pipeline, nullptr);
         m_pipeline = VK_NULL_HANDLE;
@@ -77,7 +72,7 @@ void Pipeline::addShader(const VkShaderStageFlagBits &stage,
     m_shader_stages.push_back(info);
 }
 
-bool Pipeline::init() {
+bool Pipeline::init(VkPipelineLayout &layout) {
     if (m_device == VK_NULL_HANDLE) {
         spdlog::error("invalid graphics pipeline {}", __LINE__);
         return false;
@@ -106,22 +101,6 @@ bool Pipeline::init() {
     VkPipelineDynamicStateCreateInfo dynamic_info =
         vbr::util::fillPipelineDynamicState(dynamic_state);
 
-    // TODO warp ass object
-    VkPipelineLayoutCreateInfo layout_info{
-        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        .pNext = nullptr,
-        .flags = 0,
-        .setLayoutCount = 0,
-        .pSetLayouts = nullptr,
-        .pushConstantRangeCount = 0,
-        .pPushConstantRanges = nullptr,
-    };
-    if (VK_SUCCESS !=
-        vkCreatePipelineLayout(m_device, &layout_info, nullptr, &m_layout)) {
-        spdlog::error("failed to create pipeline layout");
-        return false;
-    }
-
     VkGraphicsPipelineCreateInfo info{
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .pNext = nullptr,
@@ -137,7 +116,7 @@ bool Pipeline::init() {
         .pDepthStencilState = &depth_stencil_info,
         .pColorBlendState = &color_blend_info,
         .pDynamicState = &dynamic_info,
-        .layout = m_layout,
+        .layout = layout,
         .renderPass = VK_NULL_HANDLE,
         .subpass = 0,
         .basePipelineHandle = VK_NULL_HANDLE,

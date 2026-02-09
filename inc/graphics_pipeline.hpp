@@ -10,7 +10,6 @@ class Pipeline {
   private:
     VkDevice &m_device;
     VkPipeline m_pipeline = VK_NULL_HANDLE;
-    VkPipelineLayout m_layout = VK_NULL_HANDLE;
 
     std::vector<VkPipelineShaderStageCreateInfo> m_shader_stages;
     std::vector<VkVertexInputBindingDescription> m_vertex_bindings;
@@ -29,7 +28,7 @@ class Pipeline {
     Pipeline(VkDevice &device);
     ~Pipeline();
 
-    bool init();
+    bool init(VkPipelineLayout &layout);
 
     void addShader(const VkShaderStageFlagBits &stage,
                    std::string_view shader_path,

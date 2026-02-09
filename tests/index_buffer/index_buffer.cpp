@@ -2,6 +2,7 @@
 #include "vulkan/vulkan_core.h"
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 
 App::~App() { quit(); }
 
@@ -9,6 +10,10 @@ bool App::init(SDL_InitFlags flag) {
     if (!vbr::app::App::init(flag)) {
         return false;
     }
+
+    m_layout = std::make_unique<vbr::layout::Layout>(**m_vk_device);
+    m_layout->init();
+
     m_pipeline = std::make_unique<vbr::gpipeline::Pipeline>(**m_vk_device);
     m_pipeline->addShader(VK_SHADER_STAGE_VERTEX_BIT,
                           "../tests/shaders/buffer_triangle/vert.spv");
@@ -23,7 +28,7 @@ bool App::init(SDL_InitFlags flag) {
                              offsetof(VertexInfo, pos));
     m_pipeline->addAttribute(1, 0, VK_FORMAT_R32G32B32_SFLOAT,
                              offsetof(VertexInfo, color));
-    if (!m_pipeline->init()) {
+    if (!m_pipeline->init(**m_layout)) {
         return false;
     }
 

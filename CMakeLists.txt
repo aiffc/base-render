@@ -30,6 +30,7 @@ set(LIB_SOURCES
   src/base/swapchain.cpp
   src/base/base.cpp
   src/base/buffer.cpp
+  src/base/layout.cpp
   src/base/graphics_pipeline.cpp
 )
 
