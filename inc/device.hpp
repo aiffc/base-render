@@ -102,8 +102,8 @@ class Device {
             // invalid stage buffer
             return stage;
         }
-        void *data;
-        stage->map(total_size, &data);
+        void *data = stage->map(total_size);
+
         memcpy(data, datas.data(), (size_t)total_size);
         stage->unmap();
 
@@ -113,6 +113,21 @@ class Device {
         if (ret) {
             ret->cutFrom(*stage, total_size);
             stage.reset();
+            ret->size = sizeof(T);
+        }
+        return ret;
+    }
+
+    template <typename T>
+    std::unique_ptr<vbr::buffer::Buffer> createUniformBuffer() {
+        VkDeviceSize size = sizeof(T);
+        auto ret = createBuffer(size, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                    VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        if (ret) {
+            ret->map(size);
+            ret->size = size;
         }
         return ret;
     }

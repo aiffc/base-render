@@ -8,13 +8,17 @@ namespace vbr::buffer {
 
 Buffer::Buffer(vbr::device::Device &d) : device(d) {}
 Buffer::~Buffer() {
-    if (*device != VK_NULL_HANDLE && memory != VK_NULL_HANDLE) {
-        vkFreeMemory(*device, memory, nullptr);
-        memory = VK_NULL_HANDLE;
+    if (*device != VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(*device);
     }
+
     if (*device != VK_NULL_HANDLE && buffer != VK_NULL_HANDLE) {
         vkDestroyBuffer(*device, buffer, nullptr);
         buffer = VK_NULL_HANDLE;
+    }
+    if (*device != VK_NULL_HANDLE && memory != VK_NULL_HANDLE) {
+        vkFreeMemory(*device, memory, nullptr);
+        memory = VK_NULL_HANDLE;
     }
 }
 
@@ -22,17 +26,19 @@ void Buffer::bind(VkDeviceSize offset) {
     vkBindBufferMemory(*device, buffer, memory, offset);
 }
 
-void Buffer::map(VkDeviceSize size, void **data) {
+void *Buffer::map(VkDeviceSize size) {
     if (*device != VK_NULL_HANDLE) {
-        vkMapMemory(*device, memory, 0, size, 0, data);
+        vkMapMemory(*device, memory, 0, size, 0, &data);
     } else {
         spdlog::error("invalid memory");
     }
+    return data;
 }
 
 void Buffer::unmap() {
-    if (*device != VK_NULL_HANDLE) {
+    if (*device != VK_NULL_HANDLE && data != nullptr) {
         vkUnmapMemory(*device, memory);
+        data = nullptr;
     } else {
         spdlog::error("invalid memory");
     }
