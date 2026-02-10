@@ -3,6 +3,8 @@
 #include "glm/glm.hpp"
 #include "spdlog/spdlog.h"
 #include "vulkan/vulkan_core.h"
+#define STB_IMAGE_IMPLEMENTATION
+#include "../../extr/stb/stb_image.h"
 #include <algorithm>
 #include <memory>
 #include <optional>
@@ -549,6 +551,101 @@ Device::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
         return nullptr;
     }
     ret->bind();
+    return ret;
+}
+
+bool Device::internalCreateImage(uint32_t w, uint32_t h, VkFormat format,
+                                 VkImageTiling tilling, VkImageUsageFlags usage,
+                                 VkMemoryPropertyFlags properties,
+                                 VkImage &image, VkDeviceMemory &memory) {
+    VkImageCreateInfo image_info{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = format,
+        .extent =
+            {
+                .width = w,
+                .height = h,
+                .depth = 1,
+            },
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .tiling = tilling,
+        .usage = usage,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = nullptr,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+
+    if (VK_SUCCESS !=
+        vkCreateImage(m_vk_device, &image_info, nullptr, &image)) {
+        spdlog::error("failed to create image");
+        return false;
+    }
+
+    VkMemoryRequirements requirements;
+    vkGetImageMemoryRequirements(m_vk_device, image, &requirements);
+
+    VkMemoryAllocateInfo minfo{
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .pNext = nullptr,
+        .allocationSize = requirements.size,
+        .memoryTypeIndex =
+            findMemoryType(requirements.memoryTypeBits, properties),
+    };
+    if (VK_SUCCESS != vkAllocateMemory(m_vk_device, &minfo, nullptr, &memory)) {
+        spdlog::error("failed to alloc memory for image");
+        return false;
+    }
+    vkBindImageMemory(m_vk_device, image, memory, 0);
+    return true;
+}
+
+void Device::transitionImageLayout(VkImage &image, VkImageLayout old_layout,
+                                   VkImageLayout new_layout) {
+    auto cmd = beginTemporaryCommand();
+    vbr::util::transitionImageLayout(cmd, image, old_layout, new_layout);
+    endTemporaryCommand(cmd);
+}
+
+std::unique_ptr<vbr::image::Texture>
+Device::createTexture(std::string_view path) {
+    int width, height, channels;
+    stbi_uc *pixels =
+        stbi_load(path.data(), &width, &height, &channels, STBI_rgb_alpha);
+    VkDeviceSize texture_size = width * height * 4;
+    if (!pixels) {
+        spdlog::error("failed to load texture {}", path);
+        return nullptr;
+    }
+
+    auto ret = std::make_unique<vbr::image::Texture>(*this);
+
+    auto buffer = createBuffer(texture_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                               VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                   VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    buffer->map(texture_size);
+    memcpy(buffer->data, pixels, static_cast<size_t>(texture_size));
+    buffer->unmap();
+    stbi_image_free(pixels);
+
+    internalCreateImage(
+        width, height, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL,
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, ret->image, ret->memory);
+
+    transitionImageLayout(ret->image, VK_IMAGE_LAYOUT_UNDEFINED,
+                          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    ret->copyFrom(buffer->buffer, {width, height});
+    transitionImageLayout(ret->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                          VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    buffer.reset();
+
+    ret->init(VK_FORMAT_R8G8B8A8_SRGB);
     return ret;
 }
 } // namespace vbr::device

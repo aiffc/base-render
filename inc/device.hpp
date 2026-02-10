@@ -8,6 +8,7 @@
 #include "vulkan/vulkan_core.h"
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <vector>
 #include <vulkan/vulkan.h>
 
@@ -74,6 +75,12 @@ class Device {
     std::unique_ptr<vbr::buffer::Buffer>
     createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
                  VkMemoryPropertyFlags properties);
+    bool internalCreateImage(uint32_t w, uint32_t h, VkFormat format,
+                             VkImageTiling tilling, VkImageUsageFlags usage,
+                             VkMemoryPropertyFlags properties, VkImage &image,
+                             VkDeviceMemory &memory);
+    void transitionImageLayout(VkImage &image, VkImageLayout old_layout,
+                               VkImageLayout new_layout);
 
   public:
     Device(VkSurfaceKHR &surface, bool debug = false);
@@ -117,7 +124,7 @@ class Device {
         }
         return ret;
     }
-
+    // for uniform buffer
     template <typename T>
     std::unique_ptr<vbr::buffer::Buffer> createUniformBuffer() {
         VkDeviceSize size = sizeof(T);
@@ -131,6 +138,8 @@ class Device {
         }
         return ret;
     }
+
+    std::unique_ptr<vbr::image::Texture> createTexture(std::string_view path);
 
     Device(Device &) = delete;
     Device(Device &&) = delete;

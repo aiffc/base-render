@@ -1,5 +1,6 @@
 #pragma once
 
+#include "vulkan/vulkan_core.h"
 #include <optional>
 #include <string_view>
 #include <vector>
@@ -67,6 +68,9 @@ struct GPUInfo {
     VkSurfaceCapabilitiesKHR capabilities;
     VkSurfaceFormatKHR surface_format;
 };
+
+void transitionImageLayout(VkCommandBuffer &cmd, VkImage &image,
+                           VkImageLayout old_layout, VkImageLayout new_layout);
 
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphics;
