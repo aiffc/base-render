@@ -19,6 +19,7 @@ class Pipeline {
     std::vector<VkPipelineColorBlendAttachmentState> m_color_blend_attachment;
     VkPrimitiveTopology m_topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     VkPolygonMode m_polygon_mode = VK_POLYGON_MODE_FILL;
+    VkFrontFace m_rasterization_front_face = VK_FRONT_FACE_CLOCKWISE;
 
   private:
     VkShaderModule createShaderModule(std::string_view path);
@@ -57,6 +58,8 @@ class Pipeline {
 
     void addAttribute(uint32_t location, uint32_t binding, VkFormat format,
                       uint32_t offset);
+
+    void frontFace(VkFrontFace v) { m_rasterization_front_face = v; }
 
     VkPipeline operator*() { return m_pipeline; }
 };

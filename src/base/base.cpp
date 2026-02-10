@@ -489,6 +489,11 @@ void App::drawIndex(uint32_t count) {
     vkCmdDrawIndexed(m_vk_device->cmd(), count, 1, 0, 0, 0);
 }
 
+void App::bindDescriptorSet(const VkDescriptorSet &set,
+                            const VkPipelineLayout &layout) {
+    vkCmdBindDescriptorSets(m_vk_device->cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS,
+                            layout, 0, 1, &set, 0, nullptr);
+}
 void App::update() {}
 
 void App::event(SDL_Event *event) {

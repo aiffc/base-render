@@ -101,6 +101,10 @@ bool Pipeline::init(VkPipelineLayout &layout) {
     VkPipelineDynamicStateCreateInfo dynamic_info =
         vbr::util::fillPipelineDynamicState(dynamic_state);
 
+
+    // custom set
+    rasterization_info.frontFace = m_rasterization_front_face;
+
     VkGraphicsPipelineCreateInfo info{
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .pNext = nullptr,

@@ -11,10 +11,10 @@ Descriptor::~Descriptor() {
         vkDestroyDescriptorSetLayout(m_device, m_descriptor_layout, nullptr);
         m_descriptor_layout = VK_NULL_HANDLE;
     }
-    if (m_device != VK_NULL_HANDLE && m_descriptor_set != VK_NULL_HANDLE) {
-        vkFreeDescriptorSets(m_device, m_descriptor_pool, 1, &m_descriptor_set);
-        m_descriptor_set = VK_NULL_HANDLE;
-    }
+    // if (m_device != VK_NULL_HANDLE && m_descriptor_set != VK_NULL_HANDLE) {
+    //     vkFreeDescriptorSets(m_device, m_descriptor_pool, 1,
+    //     &m_descriptor_set); m_descriptor_set = VK_NULL_HANDLE;
+    // }
     if (m_device != VK_NULL_HANDLE && m_descriptor_pool != VK_NULL_HANDLE) {
         vkDestroyDescriptorPool(m_device, m_descriptor_pool, nullptr);
         m_descriptor_pool = VK_NULL_HANDLE;

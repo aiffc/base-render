@@ -56,5 +56,6 @@ void App::render() {
 
 void App::quit() {
     m_vbuffer.reset();
+    m_layout.reset();
     m_pipeline.reset();
 }

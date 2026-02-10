@@ -40,4 +40,7 @@ void App::render() {
     }
 }
 
-void App::quit() { m_pipeline.reset(); }
+void App::quit() {
+    m_layout.reset();
+    m_pipeline.reset();
+}

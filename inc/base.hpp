@@ -50,6 +50,8 @@ class App {
     void draw(uint32_t count);
     void bindIndex(vbr::buffer::Buffer &buffer);
     void drawIndex(uint32_t count);
+    void bindDescriptorSet(const VkDescriptorSet &set,
+                           const VkPipelineLayout &layout);
 
   private:
     // internal function for sdl
