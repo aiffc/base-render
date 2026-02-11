@@ -1,6 +1,7 @@
 #include "../../inc/image.hpp"
 #include "../../inc/device.hpp"
 #include "vulkan/vulkan_core.h"
+#include <spdlog/spdlog.h>
 
 namespace vbr::image {
 
@@ -60,10 +61,6 @@ Texture::~Texture() {
             vkFreeMemory(*main_device, memory, nullptr);
             memory = VK_NULL_HANDLE;
         }
-        if (sampler != VK_NULL_HANDLE) {
-            vkDestroySampler(*main_device, sampler, nullptr);
-            sampler = VK_NULL_HANDLE;
-        }
         if (image != VK_NULL_HANDLE) {
             vkDestroyImage(*main_device, image, nullptr);
             image = VK_NULL_HANDLE;
@@ -71,6 +68,9 @@ Texture::~Texture() {
         if (view != VK_NULL_HANDLE) {
             vkDestroyImageView(*main_device, view, nullptr);
             view = VK_NULL_HANDLE;
+        }
+        if (sampler != VK_NULL_HANDLE) {
+            vkDestroySampler(*main_device, sampler, nullptr);
         }
     }
 }
@@ -100,11 +100,38 @@ bool Texture::init(VkFormat format) {
                     .layerCount = 1,
                 },
         };
-        if (VK_SUCCESS ==
+        if (VK_SUCCESS !=
             vkCreateImageView(*main_device, &info, nullptr, &view)) {
-            return true;
+            return false;
         }
-        return false;
+        VkSamplerCreateInfo sampler_info{
+            .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .magFilter = VK_FILTER_LINEAR,
+            .minFilter = VK_FILTER_LINEAR,
+            .mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+            .addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+            .mipLodBias = 0.0f,
+            .anisotropyEnable = VK_TRUE,
+            .maxAnisotropy =
+                main_device.propreties().limits.maxSamplerAnisotropy,
+            .compareEnable = VK_FALSE,
+            .compareOp = VK_COMPARE_OP_ALWAYS,
+            .minLod = 0.0f,
+            .maxLod = 0.0f,
+            .borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+            .unnormalizedCoordinates = VK_FALSE,
+
+        };
+        if (VK_SUCCESS !=
+            vkCreateSampler(*main_device, &sampler_info, nullptr, &sampler)) {
+            spdlog::error("can not init sampler, create samper failed");
+            return false;
+        }
+        return true;
     }
     return false;
 }
@@ -141,4 +168,5 @@ void Texture::copyFrom(VkBuffer &buffer, glm::ivec2 size) {
                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy_info);
     main_device.endTemporaryCommand(cmd);
 }
+
 } // namespace vbr::image

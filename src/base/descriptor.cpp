@@ -1,5 +1,6 @@
 #include "../../inc/descriptor.hpp"
 #include "../../inc/buffer.hpp"
+#include "../../inc/image.hpp"
 #include "vulkan/vulkan_core.h"
 #include <spdlog/spdlog.h>
 
@@ -22,7 +23,7 @@ Descriptor::~Descriptor() {
 }
 
 void Descriptor::addDescriptorBinding(uint32_t binding, VkDescriptorType type,
-                                      uint32_t count, VkShaderStageFlags flags,
+                                      VkShaderStageFlags flags, uint32_t count,
                                       const VkSampler *sampler) {
     VkDescriptorSetLayoutBinding v{
         .binding = binding,
@@ -33,14 +34,12 @@ void Descriptor::addDescriptorBinding(uint32_t binding, VkDescriptorType type,
 
     };
     m_descriptor_bindings.push_back(v);
-}
-
-void Descriptor::addPoolSize(VkDescriptorType type, uint32_t count) {
-    VkDescriptorPoolSize v{
+    // add poolsize
+    VkDescriptorPoolSize dpsv{
         .type = type,
-        .descriptorCount = count,
+        .descriptorCount = 1,
     };
-    m_pool_size.push_back(v);
+    m_pool_size.push_back(dpsv);
 }
 
 bool Descriptor::init() {
@@ -110,6 +109,33 @@ void Descriptor::updateBuffer(const vbr::buffer::Buffer &buffer,
         .descriptorType = type,
         .pImageInfo = nullptr,
         .pBufferInfo = &buffer_info,
+        .pTexelBufferView = nullptr,
+    };
+    vkUpdateDescriptorSets(m_device, 1, &write_info, 0, nullptr);
+}
+
+void Descriptor::updateTexture(vbr::image::Texture &texture,
+                               uint32_t dst_binding,
+                               uint32_t dst_array_element) {
+    if (texture.sampler == VK_NULL_HANDLE || texture.view == VK_NULL_HANDLE) {
+        spdlog::warn("invalid texture, please init first");
+        return;
+    }
+    VkDescriptorImageInfo info{
+        .sampler = texture.sampler,
+        .imageView = texture.view,
+        .imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    };
+    VkWriteDescriptorSet write_info{
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .pNext = nullptr,
+        .dstSet = m_descriptor_set,
+        .dstBinding = dst_binding,
+        .dstArrayElement = dst_array_element,
+        .descriptorCount = 1,
+        .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        .pImageInfo = &info,
+        .pBufferInfo = nullptr,
         .pTexelBufferView = nullptr,
     };
     vkUpdateDescriptorSets(m_device, 1, &write_info, 0, nullptr);

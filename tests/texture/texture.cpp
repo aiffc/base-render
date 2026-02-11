@@ -1,4 +1,4 @@
-#include "uniform.hpp"
+#include "texture.hpp"
 #include "vulkan/vulkan_core.h"
 #include <chrono>
 #include <cstddef>
@@ -16,6 +16,9 @@ bool App::init(SDL_InitFlags flag) {
 
     m_descriptor = std::make_unique<vbr::descriptor::Descriptor>(**m_vk_device);
     m_descriptor->addDescriptorBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    m_descriptor->addDescriptorBinding(
+        1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+        VK_SHADER_STAGE_FRAGMENT_BIT);
     if (!m_descriptor->init()) {
         return false;
     }
@@ -27,9 +30,9 @@ bool App::init(SDL_InitFlags flag) {
 
     m_pipeline = std::make_unique<vbr::gpipeline::Pipeline>(**m_vk_device);
     m_pipeline->addShader(VK_SHADER_STAGE_VERTEX_BIT,
-                          "../tests/shaders/uniform/vert.spv");
+                          "../tests/shaders/texture/vert.spv");
     m_pipeline->addShader(VK_SHADER_STAGE_FRAGMENT_BIT,
-                          "../tests/shaders/uniform/frag.spv");
+                          "../tests/shaders/texture/frag.spv");
     m_pipeline->addViewport(static_cast<float>(m_window_size.x),
                             static_cast<float>(m_window_size.y));
     m_pipeline->addScissor(m_window_size.x, m_window_size.y);
@@ -39,16 +42,18 @@ bool App::init(SDL_InitFlags flag) {
                              offsetof(VertexInfo, pos));
     m_pipeline->addAttribute(1, 0, VK_FORMAT_R32G32B32_SFLOAT,
                              offsetof(VertexInfo, color));
+    m_pipeline->addAttribute(2, 0, VK_FORMAT_R32G32_SFLOAT,
+                             offsetof(VertexInfo, coord));
     m_pipeline->frontFace(VK_FRONT_FACE_COUNTER_CLOCKWISE);
     if (!m_pipeline->init(**m_layout)) {
         return false;
     }
 
     const std::vector<VertexInfo> vertices = {
-        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-        {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-        {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-        {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}},
+        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+        {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+        {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+        {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}},
     };
     m_vbuffer = m_vk_device->createUsageBuffer<VertexInfo>(
         vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
@@ -60,6 +65,9 @@ bool App::init(SDL_InitFlags flag) {
     m_uniform = m_vk_device->createUniformBuffer<UniformBufferObject>();
     m_descriptor->updateBuffer(*m_uniform, 0, 0,
                                VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+
+    m_texture = m_vk_device->createTexture("../asset/test.png");
+    m_descriptor->updateTexture(*m_texture, 1, 0);
     return true;
 }
 

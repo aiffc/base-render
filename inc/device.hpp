@@ -92,6 +92,9 @@ class Device {
     VkQueue &presentQueue() { return m_vk_queues.present; }
     VkQueue &transferQueue() { return m_vk_queues.transfer; }
     VkQueue &computeQueue() { return m_vk_queues.compute; }
+    const VkPhysicalDeviceProperties &propreties() const {
+        return m_vk_phy_info.properties;
+    }
 
     VkCommandBuffer beginTemporaryCommand();
     void endTemporaryCommand(VkCommandBuffer &cmd);

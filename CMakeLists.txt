@@ -76,3 +76,11 @@ set(UNIFORM_SOURCE
 
 add_executable(uniform ${UNIFORM_SOURCE})
 target_link_libraries(uniform vbr)
+
+# texture
+set(TEXTURE_SOURCE
+  tests/texture/texture.cpp
+  tests/texture/main.cpp)
+
+add_executable(texture ${TEXTURE_SOURCE})
+target_link_libraries(texture vbr)

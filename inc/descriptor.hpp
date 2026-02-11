@@ -7,6 +7,11 @@ namespace vbr::buffer {
 class Buffer;
 }
 
+namespace vbr::image {
+class Texture;
+
+}
+
 namespace vbr::descriptor {
 
 class Descriptor {
@@ -26,12 +31,13 @@ class Descriptor {
     bool init();
     void
     addDescriptorBinding(uint32_t binding, VkDescriptorType type,
-                         uint32_t count = 1,
                          VkShaderStageFlags flags = VK_SHADER_STAGE_VERTEX_BIT,
+                         uint32_t count = 1,
                          const VkSampler *sampler = nullptr);
-    void addPoolSize(VkDescriptorType type, uint32_t count = 1);
     void updateBuffer(const vbr::buffer::Buffer &buffer, uint32_t dst_binding,
                       uint32_t dst_array_element, VkDescriptorType type);
+    void updateTexture(vbr::image::Texture &texture, uint32_t dst_binding,
+                       uint32_t dst_array_element);
 
     VkDescriptorSetLayout &operator*() { return m_descriptor_layout; }
     VkDescriptorSet &set() { return m_descriptor_set; }
