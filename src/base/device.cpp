@@ -33,8 +33,9 @@ void SyncObjs::destroy(const VkDevice device) {
     }
 }
 
-Device::Device(VkSurfaceKHR &surface, bool debug)
-    : m_vk_surface(surface), m_debug(debug) {}
+Device::Device(VkSurfaceKHR &surface, VkSampleCountFlagBits sample_count,
+               bool debug)
+    : m_vk_surface(surface), m_debug(debug), m_sample_count(sample_count) {}
 Device::~Device() {
     if (m_vk_device == VK_NULL_HANDLE) {
         return;
@@ -210,6 +211,7 @@ bool Device::pickupPhyDevice(const VkInstance &instance) {
             return false;
         }
     }
+    sampleCount(m_sample_count);
     return found;
 }
 
@@ -552,6 +554,58 @@ Device::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
     }
     ret->bind();
     return ret;
+}
+
+bool Device::internalCreateSampleImage(uint32_t w, uint32_t h, VkFormat format,
+                                       VkImageTiling tilling,
+                                       VkImageUsageFlags usage,
+                                       VkMemoryPropertyFlags properties,
+                                       VkImage &image, VkDeviceMemory &memory) {
+    VkImageCreateInfo image_info{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = format,
+        .extent =
+            {
+                .width = w,
+                .height = h,
+                .depth = 1,
+            },
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = m_sample_count,
+        .tiling = tilling,
+        .usage = usage,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = nullptr,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+
+    if (VK_SUCCESS !=
+        vkCreateImage(m_vk_device, &image_info, nullptr, &image)) {
+        spdlog::error("failed to create image");
+        return false;
+    }
+
+    VkMemoryRequirements requirements;
+    vkGetImageMemoryRequirements(m_vk_device, image, &requirements);
+
+    VkMemoryAllocateInfo minfo{
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .pNext = nullptr,
+        .allocationSize = requirements.size,
+        .memoryTypeIndex =
+            findMemoryType(requirements.memoryTypeBits, properties),
+    };
+    if (VK_SUCCESS != vkAllocateMemory(m_vk_device, &minfo, nullptr, &memory)) {
+        spdlog::error("failed to alloc memory for image");
+        return false;
+    }
+    vkBindImageMemory(m_vk_device, image, memory, 0);
+    return true;
 }
 
 bool Device::internalCreateImage(uint32_t w, uint32_t h, VkFormat format,

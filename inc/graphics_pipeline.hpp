@@ -1,5 +1,6 @@
 #pragma once
 
+#include "device.hpp"
 #include <string_view>
 #include <vector>
 #include <vulkan/vulkan.h>
@@ -8,7 +9,7 @@ namespace vbr::gpipeline {
 
 class Pipeline {
   private:
-    VkDevice &m_device;
+    vbr::device::Device &m_device;
     VkPipeline m_pipeline = VK_NULL_HANDLE;
 
     std::vector<VkPipelineShaderStageCreateInfo> m_shader_stages;
@@ -26,7 +27,7 @@ class Pipeline {
     void destroyAllShaderModule();
 
   public:
-    Pipeline(VkDevice &device);
+    Pipeline(vbr::device::Device &device);
     ~Pipeline();
 
     bool init(VkPipelineLayout &layout);

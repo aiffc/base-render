@@ -17,6 +17,7 @@ struct Image {
     VkImageView view = VK_NULL_HANDLE;
 
     Image(const VkDevice &device, VkImage from, bool is_swapchain = false);
+    Image(const VkDevice &device);
     ~Image();
 
     bool init(VkFormat fomrat);

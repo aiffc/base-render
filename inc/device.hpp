@@ -56,6 +56,8 @@ class Device {
     VkCommandPool m_vk_cmd_pool;
     VkCommandBuffer m_vk_cmd;
     SyncObjs m_vk_sync;
+    // sample count
+    VkSampleCountFlagBits m_sample_count = VK_SAMPLE_COUNT_1_BIT;
 
   private:
     [[nodiscard]] bool pickupPhyDevice(const VkInstance &instance);
@@ -75,6 +77,11 @@ class Device {
     std::unique_ptr<vbr::buffer::Buffer>
     createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
                  VkMemoryPropertyFlags properties);
+    bool internalCreateSampleImage(uint32_t w, uint32_t h, VkFormat format,
+                                   VkImageTiling tilling,
+                                   VkImageUsageFlags usage,
+                                   VkMemoryPropertyFlags properties,
+                                   VkImage &image, VkDeviceMemory &memory);
     bool internalCreateImage(uint32_t w, uint32_t h, VkFormat format,
                              VkImageTiling tilling, VkImageUsageFlags usage,
                              VkMemoryPropertyFlags properties, VkImage &image,
@@ -83,7 +90,9 @@ class Device {
                                VkImageLayout new_layout);
 
   public:
-    Device(VkSurfaceKHR &surface, bool debug = false);
+    Device(VkSurfaceKHR &surface,
+           VkSampleCountFlagBits sample_count = VK_SAMPLE_COUNT_1_BIT,
+           bool debug = false);
     ~Device();
 
     bool init(const VkInstance &instance);
@@ -95,9 +104,23 @@ class Device {
     const VkPhysicalDeviceProperties &propreties() const {
         return m_vk_phy_info.properties;
     }
+    VkSampleCountFlagBits sampleCount() const { return m_sample_count; }
+    void sampleCount(VkSampleCountFlagBits flag) {
+        VkSampleCountFlags max_counts =
+            m_vk_phy_info.properties.limits.framebufferColorSampleCounts;
+        if (max_counts & flag) {
+            m_sample_count = flag;
+            spdlog::info("set sample bit {}", flag);
+            return;
+        }
+        spdlog::warn("failed to set bit {}", flag);
+        m_sample_count = VK_SAMPLE_COUNT_1_BIT;
+    }
 
     VkCommandBuffer beginTemporaryCommand();
     void endTemporaryCommand(VkCommandBuffer &cmd);
+
+    VkFormat format() const { return m_vk_phy_info.surface_format.format; }
 
     // for vertex & index buffer
     template <typename T>
@@ -143,6 +166,8 @@ class Device {
     }
 
     std::unique_ptr<vbr::image::Texture> createTexture(std::string_view path);
+
+    void waitIdle() { vkDeviceWaitIdle(m_vk_device); }
 
     Device(Device &) = delete;
     Device(Device &&) = delete;

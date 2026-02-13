@@ -192,7 +192,7 @@ bool App::initSurface() {
                                     &m_vk_surface);
 }
 
-bool App::init(SDL_InitFlags flags) {
+bool App::init(SDL_InitFlags flags, VkSampleCountFlagBits sample_count) {
     if (m_debug) {
         spdlog::set_level(spdlog::level::info);
     }
@@ -219,7 +219,8 @@ bool App::init(SDL_InitFlags flags) {
         return false;
     }
 
-    m_vk_device = std::make_unique<vbr::device::Device>(m_vk_surface, m_debug);
+    m_vk_device = std::make_unique<vbr::device::Device>(m_vk_surface,
+                                                        sample_count, m_debug);
     if (!m_vk_device->init(m_vk_instance)) {
         spdlog::error("unable to create logic device");
         return false;
@@ -230,7 +231,7 @@ bool App::init(SDL_InitFlags flags) {
         spdlog::error("unable to create swapchain");
         return false;
     }
-
+    spdlog::info("app init done");
     return true;
 }
 
@@ -290,6 +291,16 @@ bool App::begin(float r, float g, float b, float a) {
                     },
             },
     };
+
+    if (m_vk_device->sampleCount() != VK_SAMPLE_COUNT_1_BIT &&
+        m_vk_swapchain->colorView() != VK_NULL_HANDLE) {
+        attachment_info.imageView = m_vk_swapchain->colorView();
+        attachment_info.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+        attachment_info.resolveImageView = m_vk_swapchain->currentView();
+        attachment_info.resolveImageLayout =
+            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        attachment_info.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    }
 
     VkRenderingInfo rinfo{
         .sType = VK_STRUCTURE_TYPE_RENDERING_INFO,

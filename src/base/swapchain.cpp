@@ -1,6 +1,7 @@
 #include "../../inc/swapchain.hpp"
 #include "../../inc/device.hpp"
 #include "spdlog/spdlog.h"
+#include "vulkan/vulkan_core.h"
 
 namespace vbr::swapchain {
 
@@ -8,6 +9,15 @@ Swapchain::Swapchain(vbr::device::Device &device) : m_vk_device(device) {}
 Swapchain::~Swapchain() {
     if (!m_vk_swapchain_images.empty()) {
         m_vk_swapchain_images.clear();
+    }
+
+    m_vk_device.waitIdle();
+    if (m_color_image) {
+        m_color_image.reset();
+    }
+    if (m_color_memory != VK_NULL_HANDLE) {
+        vkFreeMemory(*m_vk_device, m_color_memory, nullptr);
+        m_color_memory = VK_NULL_HANDLE;
     }
 
     if (m_vk_swapchain != VK_NULL_HANDLE) {
@@ -55,6 +65,25 @@ bool Swapchain::init(const glm::ivec2 &window_size) {
     if (m_vk_swapchain != VK_NULL_HANDLE) {
         old_swapchain = m_vk_swapchain;
         m_vk_swapchain = VK_NULL_HANDLE;
+    }
+
+    if (m_vk_device.sampleCount() != VK_SAMPLE_COUNT_1_BIT) {
+        if (m_color_image) {
+            m_color_image.reset();
+        }
+        if (m_color_memory) {
+            vkFreeMemory(*m_vk_device, m_color_memory, nullptr);
+        }
+        m_color_image = std::make_unique<vbr::image::Image>(*m_vk_device);
+        m_vk_device.internalCreateSampleImage(
+            extent.width, extent.height,
+            m_vk_device.m_vk_phy_info.surface_format.format,
+            VK_IMAGE_TILING_OPTIMAL,
+            VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT |
+                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, m_color_image->image,
+            m_color_memory);
+        m_color_image->init(m_vk_device.m_vk_phy_info.surface_format.format);
     }
 
     VkSwapchainCreateInfoKHR info{

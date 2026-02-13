@@ -22,7 +22,9 @@ class App : public vbr::app::App {
     using vbr::app::App::App;
     ~App() override;
 
-    [[nodiscard]] bool init(SDL_InitFlags flag = SDL_INIT_AUDIO) override;
+    [[nodiscard]] bool
+    init(SDL_InitFlags flag = SDL_INIT_AUDIO,
+         VkSampleCountFlagBits sample_count = VK_SAMPLE_COUNT_1_BIT) override;
     void update() override;
     void event(SDL_Event *event) override;
     void render() override;

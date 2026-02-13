@@ -66,7 +66,9 @@ class App {
 
     bool shouldQuit() const { return m_quit; }
 
-    [[nodiscard]] virtual bool init(SDL_InitFlags flag = SDL_INIT_AUDIO);
+    [[nodiscard]] virtual bool
+    init(SDL_InitFlags flag = SDL_INIT_AUDIO,
+         VkSampleCountFlagBits sample_count = VK_SAMPLE_COUNT_1_BIT);
     virtual void update();
     virtual void event(SDL_Event *event);
     virtual void render();

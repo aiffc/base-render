@@ -38,7 +38,7 @@ VkPipelineRasterizationStateCreateInfo fillPipelineRasterization(
 
 VkPipelineMultisampleStateCreateInfo fillPipelineMultisample(
     const VkSampleCountFlagBits &samples = VK_SAMPLE_COUNT_1_BIT,
-    bool shading_enable = false, float min_shading = 0.0f,
+    bool shading_enable = false, float min_shading = 1.0f,
     const VkSampleMask *mask = nullptr, bool alpha2coverage_enable = false,
     bool alpha2one_enable = false);
 

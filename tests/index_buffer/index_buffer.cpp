@@ -6,15 +6,15 @@
 
 App::~App() { quit(); }
 
-bool App::init(SDL_InitFlags flag) {
-    if (!vbr::app::App::init(flag)) {
+bool App::init(SDL_InitFlags flag, VkSampleCountFlagBits sample_count) {
+    if (!vbr::app::App::init(flag, sample_count)) {
         return false;
     }
 
     m_layout = std::make_unique<vbr::layout::Layout>(**m_vk_device);
     m_layout->init();
 
-    m_pipeline = std::make_unique<vbr::gpipeline::Pipeline>(**m_vk_device);
+    m_pipeline = std::make_unique<vbr::gpipeline::Pipeline>(*m_vk_device);
     m_pipeline->addShader(VK_SHADER_STAGE_VERTEX_BIT,
                           "../tests/shaders/buffer_triangle/vert.spv");
     m_pipeline->addShader(VK_SHADER_STAGE_FRAGMENT_BIT,

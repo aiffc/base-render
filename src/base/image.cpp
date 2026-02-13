@@ -8,6 +8,8 @@ namespace vbr::image {
 Image::Image(const VkDevice &device, VkImage from, bool is_swapchain)
     : image(from), main_device(device), is_swapchain_image(is_swapchain) {}
 
+Image::Image(const VkDevice &device) : main_device(device) {}
+
 Image::~Image() { destroy(); }
 
 bool Image::init(VkFormat format) {
@@ -57,6 +59,7 @@ void Image::destroy() {
 Texture::Texture(vbr::device::Device &device) : main_device(device) {}
 Texture::~Texture() {
     if (*main_device != VK_NULL_HANDLE) {
+        main_device.waitIdle();
         if (memory != VK_NULL_HANDLE) {
             vkFreeMemory(*main_device, memory, nullptr);
             memory = VK_NULL_HANDLE;

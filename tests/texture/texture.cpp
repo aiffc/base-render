@@ -9,8 +9,8 @@
 
 App::~App() { quit(); }
 
-bool App::init(SDL_InitFlags flag) {
-    if (!vbr::app::App::init(flag)) {
+bool App::init(SDL_InitFlags flag, VkSampleCountFlagBits sample_count) {
+    if (!vbr::app::App::init(flag, sample_count)) {
         return false;
     }
 
@@ -28,7 +28,7 @@ bool App::init(SDL_InitFlags flag) {
         return false;
     }
 
-    m_pipeline = std::make_unique<vbr::gpipeline::Pipeline>(**m_vk_device);
+    m_pipeline = std::make_unique<vbr::gpipeline::Pipeline>(*m_vk_device);
     m_pipeline->addShader(VK_SHADER_STAGE_VERTEX_BIT,
                           "../tests/shaders/texture/vert.spv");
     m_pipeline->addShader(VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -50,10 +50,10 @@ bool App::init(SDL_InitFlags flag) {
     }
 
     const std::vector<VertexInfo> vertices = {
-        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+        {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {0.5f, 0.0f}},
         {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-        {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
-        {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}},
+        {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.5f}},
+        {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}, {0.5f, 0.5f}},
     };
     m_vbuffer = m_vk_device->createUsageBuffer<VertexInfo>(
         vertices, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
@@ -110,6 +110,7 @@ void App::render() {
 }
 
 void App::quit() {
+    m_texture.reset();
     m_uniform.reset();
     m_ibuffer.reset();
     m_vbuffer.reset();

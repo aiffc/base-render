@@ -1,27 +1,28 @@
 #include "../../inc/graphics_pipeline.hpp"
 #include "../../inc/util.hpp"
 #include "spdlog/spdlog.h"
+#include "vulkan/vulkan_core.h"
 #include <SDL3/SDL_iostream.h>
 #include <cstdint>
 #include <vector>
 
 namespace vbr::gpipeline {
 
-Pipeline::Pipeline(VkDevice &device) : m_device(device) {}
+Pipeline::Pipeline(vbr::device::Device &device) : m_device(device) {}
 
 Pipeline::~Pipeline() {
-    if (m_device != VK_NULL_HANDLE) {
-        vkDeviceWaitIdle(m_device);
+    if (*m_device != VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(*m_device);
     }
 
-    if (m_device != VK_NULL_HANDLE && m_pipeline != VK_NULL_HANDLE) {
-        vkDestroyPipeline(m_device, m_pipeline, nullptr);
+    if (*m_device != VK_NULL_HANDLE && m_pipeline != VK_NULL_HANDLE) {
+        vkDestroyPipeline(*m_device, m_pipeline, nullptr);
         m_pipeline = VK_NULL_HANDLE;
     }
 }
 
 VkShaderModule Pipeline::createShaderModule(std::string_view path) {
-    if (m_device == VK_NULL_HANDLE) {
+    if (*m_device == VK_NULL_HANDLE) {
         spdlog::error("invalid pipeline {}", __LINE__);
         return VK_NULL_HANDLE;
     }
@@ -36,7 +37,8 @@ VkShaderModule Pipeline::createShaderModule(std::string_view path) {
         .pCode = static_cast<uint32_t *>(code),
     };
     VkShaderModule module = VK_NULL_HANDLE;
-    if (VK_SUCCESS != vkCreateShaderModule(m_device, &info, nullptr, &module)) {
+    if (VK_SUCCESS !=
+        vkCreateShaderModule(*m_device, &info, nullptr, &module)) {
         spdlog::error("failed to create shader module");
         return VK_NULL_HANDLE;
     }
@@ -44,13 +46,13 @@ VkShaderModule Pipeline::createShaderModule(std::string_view path) {
 }
 
 void Pipeline::destroyAllShaderModule() {
-    if (m_device == VK_NULL_HANDLE) {
+    if (*m_device == VK_NULL_HANDLE) {
         spdlog::error("invalid pipeline {}", __LINE__);
         return;
     }
     for (auto &info : m_shader_stages) {
         if (info.module != VK_NULL_HANDLE) {
-            vkDestroyShaderModule(m_device, info.module, nullptr);
+            vkDestroyShaderModule(*m_device, info.module, nullptr);
         }
     }
 }
@@ -73,7 +75,7 @@ void Pipeline::addShader(const VkShaderStageFlagBits &stage,
 }
 
 bool Pipeline::init(VkPipelineLayout &layout) {
-    if (m_device == VK_NULL_HANDLE) {
+    if (*m_device == VK_NULL_HANDLE) {
         spdlog::error("invalid graphics pipeline {}", __LINE__);
         return false;
     }
@@ -89,7 +91,7 @@ bool Pipeline::init(VkPipelineLayout &layout) {
     VkPipelineRasterizationStateCreateInfo rasterization_info =
         vbr::util::fillPipelineRasterization(m_polygon_mode);
     VkPipelineMultisampleStateCreateInfo multiple_sample_info =
-        vbr::util::fillPipelineMultisample();
+        vbr::util::fillPipelineMultisample(m_device.sampleCount());
     VkPipelineDepthStencilStateCreateInfo depth_stencil_info =
         vbr::util::fillPipelineDepthStencil();
     VkPipelineColorBlendStateCreateInfo color_blend_info =
@@ -101,9 +103,19 @@ bool Pipeline::init(VkPipelineLayout &layout) {
     VkPipelineDynamicStateCreateInfo dynamic_info =
         vbr::util::fillPipelineDynamicState(dynamic_state);
 
-
     // custom set
     rasterization_info.frontFace = m_rasterization_front_face;
+
+    VkFormat color_format = m_device.format();
+    VkPipelineRenderingCreateInfoKHR rendering_info{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR,
+        .pNext = nullptr,
+        .viewMask = 0,
+        .colorAttachmentCount = 1,
+        .pColorAttachmentFormats = &color_format,
+        .depthAttachmentFormat = VK_FORMAT_UNDEFINED,
+        .stencilAttachmentFormat = VK_FORMAT_UNDEFINED,
+    };
 
     VkGraphicsPipelineCreateInfo info{
         .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
@@ -126,8 +138,10 @@ bool Pipeline::init(VkPipelineLayout &layout) {
         .basePipelineHandle = VK_NULL_HANDLE,
         .basePipelineIndex = 0,
     };
-
-    if (VK_SUCCESS != vkCreateGraphicsPipelines(m_device, VK_NULL_HANDLE, 1,
+    if (m_device.sampleCount() != VK_SAMPLE_COUNT_1_BIT) {
+        info.pNext = &rendering_info;
+    }
+    if (VK_SUCCESS != vkCreateGraphicsPipelines(*m_device, VK_NULL_HANDLE, 1,
                                                 &info, nullptr, &m_pipeline)) {
         spdlog::error("failed to create graphics pipeline");
         return false;

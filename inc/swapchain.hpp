@@ -20,6 +20,9 @@ class Swapchain {
     VkSwapchainKHR m_vk_swapchain = VK_NULL_HANDLE;
     std::vector<std::unique_ptr<vbr::image::Image>> m_vk_swapchain_images;
     uint32_t m_current_index;
+    // multiple sample
+    std::unique_ptr<vbr::image::Image> m_color_image;
+    VkDeviceMemory m_color_memory = VK_NULL_HANDLE;
 
   public:
     Swapchain(vbr::device::Device &device);
@@ -36,6 +39,9 @@ class Swapchain {
         return m_vk_swapchain_images[m_current_index]->view;
     }
     uint32_t currentIndex() const { return m_current_index; }
+
+    VkImage &colorImage() const { return m_color_image->image; }
+    VkImageView &colorView() const { return m_color_image->view; }
 
     Swapchain(Swapchain &) = delete;
     Swapchain(Swapchain &&) = delete;
