@@ -467,6 +467,11 @@ void App::bindDescriptorSet(const VkDescriptorSet &set,
     vkCmdBindDescriptorSets(m_vk_device->cmd(), VK_PIPELINE_BIND_POINT_GRAPHICS,
                             layout, 0, 1, &set, 0, nullptr);
 }
+
+void App::pushConstant(VkPipelineLayout &layout, VkShaderStageFlags stage,
+                       uint32_t offset, uint32_t size, void *data) {
+    vkCmdPushConstants(m_vk_device->cmd(), layout, stage, offset, size, data);
+}
 void App::update() {}
 
 void App::event(SDL_Event *event) {

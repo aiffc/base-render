@@ -52,6 +52,8 @@ class App {
     void drawIndex(uint32_t count);
     void bindDescriptorSet(const VkDescriptorSet &set,
                            const VkPipelineLayout &layout);
+    void pushConstant(VkPipelineLayout &layout, VkShaderStageFlags stage,
+                      uint32_t offset, uint32_t size, void *data);
 
   private:
     // internal function for sdl
